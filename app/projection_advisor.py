@@ -38,55 +38,14 @@ class ProjectionAdvisor:
         return intents
     
     def suggest_projections(self, user_query: str, tables: List[str], existing_columns: Dict[str, List[str]] = None) -> Dict[str, List[str]]:
-        """Suggest appropriate column projections based on intent and tables"""
-        self._ensure_schema()
-        intents = self.analyze_intent(user_query)
+        """Deprecated: previously suggested heuristic projections. Now returns existing columns unchanged.
+        Column choice must be dictated by the LLM plan, not local heuristics.
+        """
         existing_columns = existing_columns or {}
-        
         suggestions = {}
-        
         for table in tables:
-            if table not in self.schema_graph.tables:
-                continue
-            
-            table_info = self.schema_graph.tables.get(table, {})
-            columns = table_info.get('columns', [])
-            
-            # Start with existing columns
-            suggested_cols = existing_columns.get(table, []).copy()
-            
-            # Count/aggregate queries
-            if intents['is_count'] or intents['is_aggregate']:
-                # Don't add extra columns for count/aggregate queries
-                # The existing columns should already be appropriate
-                pass
-            
-            # List/browse queries
-            elif intents['is_list']:
-                suggested_cols = self._add_display_columns(table, columns, suggested_cols)
-            
-            # Detail queries
-            elif intents['is_detail']:
-                suggested_cols = self._add_display_columns(table, columns, suggested_cols)
-                suggested_cols = self._add_key_columns(table, columns, suggested_cols)
-            
-            # Time-based queries
-            if intents['is_time_based']:
-                suggested_cols = self._add_time_columns(table, columns, suggested_cols)
-            
-            # Always add ID columns for reference
-            suggested_cols = self._add_id_columns(table, columns, suggested_cols)
-            
-            # Remove duplicates while preserving order
-            seen = set()
-            unique_cols = []
-            for col in suggested_cols:
-                if col not in seen:
-                    unique_cols.append(col)
-                    seen.add(col)
-            
-            suggestions[table] = unique_cols
-        
+            # Preserve the caller-provided columns; if none provided, leave empty to signal caller/LLM to decide
+            suggestions[table] = existing_columns.get(table, [])
         return suggestions
     
     def _add_display_columns(self, table: str, columns: List[str], existing: List[str]) -> List[str]:

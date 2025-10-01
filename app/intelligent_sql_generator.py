@@ -656,15 +656,8 @@ class IntelligentSQLGenerator:
                 
             table_info = self.schema_graph.tables[table_name]
             description += f"Table: {table_name}\n"
-            # Select a focused subset of columns most relevant to the query to reduce noise
-            selected_columns = self._get_relevant_columns_for_query(
-                table_name,
-                q_lower,
-                table_info.get('columns', [])
-            )
-            if not selected_columns:
-                # Fallback to a small subset if nothing matched
-                selected_columns = table_info.get('columns', [])[:16]
+            # Provide full column list for each table so the LLM can choose accurately
+            selected_columns = table_info.get('columns', [])
             description += f"Columns: {', '.join(selected_columns)}\n"
             
             if table_info.get('scoped', False):
@@ -882,28 +875,40 @@ class IntelligentSQLGenerator:
                     user_query, scoping_value, current_tables, current_schema_context
                 )
                 
-                # Projection intent handling
+                # Intent handling without heuristic projection rewrites
                 from .projection_advisor import projection_advisor
                 intents = projection_advisor.analyze_intent(user_query)
-                # If user asked for counts, ensure COUNT(*). If user did NOT ask for counts
-                # but the model produced a COUNT(*), rewrite to a detailed SELECT using advisor.
                 sql_stripped_upper = sql.strip().upper()
                 if intents.get('is_count', False):
                     if not sql_stripped_upper.startswith('SELECT COUNT('):
                         sql = self._fix_count_query(sql, user_query)
                 else:
                     if sql_stripped_upper.startswith('SELECT COUNT('):
-                        # Rewrite COUNT to a projection suitable for detail/list intents
-                        # Determine main table
-                        import re as _re
-                        from_match = _re.search(r'FROM\s+(\w+)', sql, _re.IGNORECASE)
-                        main_table = from_match.group(1) if from_match else (current_tables[0] if current_tables else None)
-                        if main_table:
-                            table_cols = self.schema_graph.tables.get(main_table, {}).get('columns', [])
-                            suggestions = projection_advisor.suggest_projections(user_query, [main_table], {main_table: []})
-                            proj_cols = suggestions.get(main_table, []) or (table_cols[:6] if table_cols else ['*'])
-                            # Replace SELECT COUNT(*) with SELECT <proj>
-                            sql = _re.sub(r'^\s*SELECT\s+COUNT\s*\(\s*\*\s*\)\s+', f"SELECT {projection_advisor.get_projection_sql(main_table, proj_cols)} ", sql, flags=_re.IGNORECASE)
+                        # Treat incorrect COUNT as a planning/generation error; trigger refinement
+                        validation_result = {
+                            "valid": False,
+                            "error": "LLM returned COUNT but details were requested. Regenerate with detailed projection.",
+                            "modified_sql": sql,
+                            "tables": current_tables
+                        }
+                        # Refinement path
+                        attempt += 1
+                        if attempt < self.MAX_VALIDATION_ATTEMPTS:
+                            refinement_result = self._refine_schema_context(
+                                current_schema_context, validation_result["error"], 
+                                user_query, current_tables
+                            )
+                            current_schema_context = refinement_result["schema_context"]
+                            current_tables = refinement_result["tables"]
+                            continue
+                        else:
+                            return {
+                                "success": False,
+                                "sql": sql,
+                                "tables_used": current_tables,
+                                "attempts": attempt,
+                                "error": validation_result["error"]
+                            }
                 
                 # Enhanced validation with schema accuracy checks
                 validation_result = self._validate_sql_with_schema_accuracy(

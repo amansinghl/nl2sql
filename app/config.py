@@ -234,17 +234,34 @@ class Settings(BaseSettings):
         "You are an expert SQL planner. Given a user question and a focused schema, "
         "produce a minimal JSON plan with these keys only: \n"
         "{\"tables\": [str], \"columns\": {table: [str]}, \"joins\": [{\"from_table\": str, \"from_column\": str, \"to_table\": str, \"to_column\": str, \"type\": \"INNER|LEFT\"}], \"filters\": [str], \"group_by\": [str], \"order_by\": [str], \"limit\": int|null, \"needs_scoping\": bool, \"scoping_columns_used\": [str]}\n"
-        "Rules: use ONLY tables in 'Relevant Tables'; use only columns present in the table definitions; "
-        "derive joins from 'Key Relationships'; set needs_scoping=true if any used table is scoped. "
-        "Prefer a single table when sufficient (leave joins empty if not needed). "
-        "For count questions ('how many', 'count'), set columns to {}, group_by to [], and avoid joins unless absolutely required. Return ONLY JSON."
+        "Rules: Use ONLY tables and columns present in the schema. Derive joins from 'Key Relationships'. "
+        "For non-count questions, explicitly list the exact columns to SELECT per table in 'columns' (no placeholders). "
+        "For count questions ('how many', 'count'), set columns to {} and group_by to []. "
+        "Set needs_scoping=true if any used table is scoped. Prefer a single table when sufficient. Return ONLY JSON."
     )
     PROMPT_SQL_FROM_PLAN_HEADER: str = (
-        "You are an expert SQL generator for MySQL. Generate SQL from the provided plan. "
-        "Use MySQL syntax, follow joins exactly, apply filters, GROUP BY and ORDER BY from plan. "
-        "If scoping is required, ensure the WHERE includes the correct scoping column with the given value. "
-        "CRITICAL: If the plan has empty columns {} and empty group_by [], this is a COUNT query - use SELECT COUNT(*) FROM table. "
-        "Do NOT select specific columns for count queries. Output ONLY SQL."
+        "You are an expert SQL generator for MySQL. Generate SQL strictly from the provided plan. "
+        "Use MySQL syntax; follow joins, filters, GROUP BY, ORDER BY exactly. "
+        "SELECT must include exactly and only the columns specified in plan.columns (qualified or aliased as needed). "
+        "If plan.columns is {}, generate a COUNT(*) query. Do NOT add or remove columns beyond the plan. "
+        "If scoping is required, ensure the WHERE includes the correct scoping column with the given value. Output ONLY SQL."
+    )
+    
+    # Explanation generation configuration
+    EXPLANATION_SYSTEM_MESSAGE: str = os.getenv(
+        "EXPLANATION_SYSTEM_MESSAGE",
+        "You write concise, user-facing summaries (1-3 sentences) that directly answer the question based on the returned rows. No SQL or schema talk."
+    )
+    EXPLANATION_MAX_TOKENS: int = int(os.getenv("EXPLANATION_MAX_TOKENS", "400"))
+    EXPLANATION_TEMPERATURE: float = float(os.getenv("EXPLANATION_TEMPERATURE", "0.2"))
+    EXPLANATION_ENABLE_ROWS_PREVIEW: bool = bool(int(os.getenv("EXPLANATION_ENABLE_ROWS_PREVIEW", "1")))
+    EXPLANATION_PROMPT_HEADER: str = os.getenv(
+        "EXPLANATION_PROMPT_HEADER",
+        "You are a data analyst. Write a brief answer for the end user based on the returned rows."
+    )
+    EXPLANATION_PROMPT_CONSTRAINTS: str = os.getenv(
+        "EXPLANATION_PROMPT_CONSTRAINTS",
+        "Constraints:\n- 1 to 3 sentences.\n- Focus on the user's question and key findings.\n- No SQL, no schema explanations, no steps.\n- If no results, state that clearly and suggest a concise next step.\n"
     )
     
     class Config:

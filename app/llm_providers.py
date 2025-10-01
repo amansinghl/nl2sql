@@ -68,6 +68,32 @@ class BaseLLMProvider(ABC):
             f"SQL:"
         )
     
+    def build_explanation_prompt(self, user_query: str, results: List[Dict], row_count: int) -> str:
+        """Build a concise, query-focused explanation prompt for LLMs.
+        The explanation MUST:
+        - Directly answer the user's question in 1-3 sentences
+        - Reference the query intent, not the SQL or schema
+        - Summarize notable patterns/aggregates only if helpful
+        - Avoid filler like "the query returns" or restating columns
+        - If no rows: explain that succinctly
+        """
+        preview_rows = results[:3] if results else []
+        import json
+        rows_preview_text = json.dumps(preview_rows, ensure_ascii=False, default=str)
+        header = settings.EXPLANATION_PROMPT_HEADER
+        constraints = settings.EXPLANATION_PROMPT_CONSTRAINTS
+        rows_section = (
+            f"Sample rows (first 3): {rows_preview_text}\n\n" if settings.EXPLANATION_ENABLE_ROWS_PREVIEW else ""
+        )
+        return (
+            f"{header}\n"
+            f"{constraints}\n"
+            f"User question: {user_query}\n"
+            f"Row count: {row_count}\n"
+            f"{rows_section}"
+            "Answer:"
+        )
+    
     def _clean_sql(self, sql: str) -> str:
         """Clean and format the generated SQL"""
         # Remove markdown code blocks if present
@@ -143,11 +169,11 @@ class OpenAIProvider(BaseLLMProvider):
             data = {
                 "model": self.config.model,
                 "messages": [
-                    {"role": "system", "content": "You are a helpful assistant that explains database query results in natural language."},
+                    {"role": "system", "content": settings.EXPLANATION_SYSTEM_MESSAGE},
                     {"role": "user", "content": prompt}
                 ],
-                "max_tokens": 200,
-                "temperature": 0.3
+                "max_tokens": settings.EXPLANATION_MAX_TOKENS,
+                "temperature": settings.EXPLANATION_TEMPERATURE
             }
             
             response = await self.client.post(
@@ -278,8 +304,8 @@ class AnthropicProvider(BaseLLMProvider):
             
             data = {
                 "model": self.config.model,
-                "max_tokens": 200,
-                "temperature": 0.3,
+                "max_tokens": settings.EXPLANATION_MAX_TOKENS,
+                "temperature": settings.EXPLANATION_TEMPERATURE,
                 "messages": [
                     {"role": "user", "content": prompt}
                 ]
@@ -420,14 +446,14 @@ class GoogleProvider(BaseLLMProvider):
                 "contents": [
                     {
                         "parts": [
-                            {"text": "You are a helpful assistant that explains database query results in natural language."},
+                            {"text": settings.EXPLANATION_SYSTEM_MESSAGE},
                             {"text": prompt}
                         ]
                     }
                 ],
                 "generationConfig": {
-                    "maxOutputTokens": 200,
-                    "temperature": 0.3,
+                    "maxOutputTokens": settings.EXPLANATION_MAX_TOKENS,
+                    "temperature": settings.EXPLANATION_TEMPERATURE,
                     "stopSequences": ["\n\n", "Human:", "Assistant:"]
                 }
             }
@@ -555,11 +581,11 @@ class CustomProvider(BaseLLMProvider):
             data = {
                 "model": self.config.model,
                 "messages": [
-                    {"role": "system", "content": "You are a helpful assistant that explains database query results in natural language."},
+                    {"role": "system", "content": settings.EXPLANATION_SYSTEM_MESSAGE},
                     {"role": "user", "content": prompt}
                 ],
-                "max_tokens": 200,
-                "temperature": 0.3,
+                "max_tokens": settings.EXPLANATION_MAX_TOKENS,
+                "temperature": settings.EXPLANATION_TEMPERATURE,
                 "stop": ["\n\n", "Human:", "Assistant:"]
             }
             

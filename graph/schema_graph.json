@@ -24,7 +24,8 @@
     "cod": ["cod_transactions"],
     "payment": ["transactions"],
     "partner": ["suppliers"],
-    "partners": ["suppliers"]
+    "partners": ["suppliers"],
+    "ledger": ["transactions"]
   },
   "tables": {
     "entities": {
@@ -199,6 +200,10 @@
         {
           "query": "Shipments in transit by supplier",
           "sql": "SELECT s.supplier_id, COUNT(*) AS in_transit FROM shipments s WHERE s.tracking_status IN ('1220','1400','1700') GROUP BY s.supplier_id"
+        },
+        {
+          "query": "Shipments details for 123",
+          "sql": "SELECT * FROM shipments WHERE shipments_no = '123'"
         },
         {
           "query": "How many shipments we got today?",
