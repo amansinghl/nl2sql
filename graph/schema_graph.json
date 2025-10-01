@@ -1,0 +1,1018 @@
+{
+  "security_model": {
+    "scoping_column": "accounts_entity_id",
+    "scoping_value_source": "request",
+    "scoping_value_field": "scoping_value"
+  },
+  "keyword_mappings": {
+    "customer": ["entities"],
+    "customers": ["entities"],
+    "client": ["entities"],
+    "clients": ["entities"],
+    "user": ["users"],
+    "users": ["users"],
+    "shipment": ["shipments"],
+    "shipments": ["shipments"],
+    "awb": ["shipments", "child_awb_numbers", "shipment_tracking_details"],
+    "tracking": ["shipments", "shipment_tracking_details"],
+    "order": ["orders"],
+    "orders": ["orders"],
+    "invoice": ["invoices"],
+    "invoices": ["invoices"],
+    "ndr": ["ndr"],
+    "npr": ["npr"],
+    "cod": ["cod_transactions"],
+    "payment": ["transactions"],
+    "partner": ["suppliers"],
+    "partners": ["suppliers"]
+  },
+  "tables": {
+    "entities": {
+      "columns": ["id", "accounts_entity_id", "entity_name", "credit_activated", "credit_balance", "created_at", "updated_at", "deleted_at"],
+      "scoped": true,
+      "scoping_column": "accounts_entity_id",
+      "description": "Core business entities/customers in the multi-tenant system. Each entity represents a company or organization using the shipping platform.",
+      "examples": [
+        {
+          "query": "List all entities",
+          "sql": "SELECT * FROM entities"
+        },
+        {
+          "query": "Find entities by name pattern",
+          "sql": "SELECT * FROM entities WHERE entity_name LIKE '%Acme%'"
+        },
+        {
+          "query": "Entities with negative credit balance",
+          "sql": "SELECT * FROM entities WHERE credit_activated = 1 AND credit_balance < 0"
+        },
+        {
+          "query": "Entities or customers or clients created this month",
+          "sql": "SELECT * FROM entities WHERE created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')"
+        },
+        {
+          "query": "How many entities or customers or clients are there?",
+          "sql": "SELECT COUNT(*) FROM entities"
+        },
+        {
+          "query": "Entities with highest credit balance",
+          "sql": "SELECT * FROM entities WHERE credit_activated = 1 ORDER BY credit_balance DESC LIMIT 10"
+        }
+      ]
+    },
+    "users": {
+      "columns": ["id", "accounts_entity_id", "accounts_user_id", "first_name", "last_name", "email", "country_code", "mobile", "created_at", "updated_at", "deleted_at"],
+      "scoped": false,
+      "description": "User accounts within entities. Users can belong to multiple entities through entity_user_mappings.",
+      "examples": [
+        {
+          "query": "Find user by email",
+          "sql": "SELECT * FROM users WHERE email = 'user@example.com'"
+        },
+        {
+          "query": "All users for a specific entity",
+          "sql": "SELECT u.* FROM users u JOIN entity_user_mappings eum ON u.accounts_user_id = eum.accounts_user_id WHERE eum.accounts_entity_id = '12345' AND (eum.deleted_at IS NULL OR eum.deleted_at = '0000-00-00 00:00:00')"
+        },
+        {
+          "query": "Users without an active mapping",
+          "sql": "SELECT u.* FROM users u LEFT JOIN entity_user_mappings eum ON u.accounts_user_id = eum.accounts_user_id AND eum.is_active = 1 WHERE eum.id IS NULL"
+        },
+        {
+          "query": "How many users for entity?",
+          "sql": "SELECT COUNT(*) FROM users u JOIN entity_user_mappings eum ON u.accounts_user_id = eum.accounts_user_id WHERE eum.accounts_entity_id = '123' AND eum.is_active = 1"
+        },
+        {
+          "query": "Users with entity names",
+          "sql": "SELECT u.*, e.entity_name FROM users u JOIN entity_user_mappings eum ON u.accounts_user_id = eum.accounts_user_id JOIN entities e ON eum.accounts_entity_id = e.accounts_entity_id WHERE eum.accounts_entity_id = '123'"
+        }
+      ]
+    },
+    "entity_user_mappings": {
+      "columns": ["id", "accounts_entity_id", "accounts_user_id", "is_active", "deleted_at", "created_at", "updated_at"],
+      "scoped": true,
+      "scoping_column": "accounts_entity_id",
+      "description": "Junction table linking users to entities with API access control and activation status.",
+      "examples": [
+        {
+          "query": "Active user mappings for entity",
+          "sql": "SELECT * FROM entity_user_mappings WHERE accounts_entity_id = '123' AND is_active = 1"
+        },
+        {
+          "query": "User mapping count by entity",
+          "sql": "SELECT accounts_entity_id, COUNT(*) as user_count FROM entity_user_mappings WHERE is_active = 1 GROUP BY accounts_entity_id"
+        }
+      ]
+    },
+    "locations": {
+      "columns": ["id", "accounts_entity_id", "accounts_user_id", "gst_branch_id", "location_name", "location_type", "email", "full_name", "contact", "calling_code", "address_line_1", "address_line_2", "address_line_3", "landmark", "pincode", "city", "state", "visibility", "country", "open_time", "closed_time", "lat", "long", "channel_name", "channel_location_id", "channel_unique_id", "is_active", "created_at", "updated_at", "deleted_at", "hash_sha256"],
+      "scoped": true,
+      "scoping_column": "accounts_entity_id",
+      "description": "Address and location information for pickup, delivery, billing, and return addresses. Supports multiple channels and geocoding.",
+      "examples": [
+        {
+          "query": "Active locations for an entity",
+          "sql": "SELECT * FROM locations WHERE accounts_entity_id = '12345' AND is_active = 1"
+        },
+        {
+          "query": "All locations in Mumbai",
+          "sql": "SELECT * FROM locations WHERE city = 'Mumbai'"
+        },
+        {
+          "query": "Pickup locations by pincode",
+          "sql": "SELECT * FROM locations WHERE pincode = '400001' AND (location_type = 'pickup' OR channel_name = 'pickup')"
+        },
+        {
+          "query": "How many locations for entity?",
+          "sql": "SELECT COUNT(*) FROM locations WHERE accounts_entity_id = '123' AND is_active = 1"
+        },
+        {
+          "query": "Locations with entity info",
+          "sql": "SELECT l.*, e.entity_name FROM locations l JOIN entities e ON l.accounts_entity_id = e.accounts_entity_id WHERE l.accounts_entity_id = '123'"
+        }
+      ]
+    },
+    "orders": {
+      "columns": ["id", "accounts_entity_id", "accounts_user_id", "shipment_no", "channel_order_id", "channel_id", "channel_name", "bulk_id", "payment_type", "from_pincode", "to_pincode", "order_date", "shipment_date", "cod_value", "product_value", "currency_code", "product", "weight", "weight_unit", "weight_in_kgs", "is_offline", "cancelled_at", "reference1", "reference2", "status", "gst_branch_id", "pickup_location_id", "consignee_location_id", "billing_location_id", "return_location_id", "created_at", "updated_at", "deleted_at", "quote_request_id"],
+      "scoped": true,
+      "scoping_column": "accounts_entity_id",
+      "description": "Order records containing shipment details, payment information, and location references. Foundation for shipment processing.",
+      "examples": [
+        {
+          "query": "Today's COD orders for an entity",
+          "sql": "SELECT * FROM orders WHERE accounts_entity_id = '12345' AND cod_value > 0 AND DATE(order_date) = CURDATE()"
+        },
+        {
+          "query": "Orders in a date range",
+          "sql": "SELECT * FROM orders WHERE order_date BETWEEN '2025-09-01' AND '2025-09-30'"
+        },
+        {
+          "query": "Orders with destination region info",
+          "sql": "SELECT o.*, dpm.region FROM orders o JOIN domestic_pincode_masters dpm ON o.to_pincode = dpm.pincode WHERE o.accounts_entity_id = '12345'"
+        },
+        {
+          "query": "How many orders today?",
+          "sql": "SELECT COUNT(*) FROM orders WHERE DATE(order_date) = CURDATE() AND accounts_entity_id = '123'"
+        },
+        {
+          "query": "Orders by payment type",
+          "sql": "SELECT payment_type, COUNT(*) as order_count FROM orders WHERE accounts_entity_id = '123' GROUP BY payment_type"
+        },
+        {
+          "query": "Orders with customer info",
+          "sql": "SELECT o.*, CONCAT(u.first_name, ' ', u.last_name) as customer_name FROM orders o JOIN users u ON o.accounts_user_id = u.accounts_user_id WHERE o.accounts_entity_id = '123'"
+        },
+        {
+          "query": "Total order value last week",
+          "sql": "SELECT SUM(product_value) FROM orders WHERE order_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND accounts_entity_id = '123'"
+        }
+      ]
+    },
+    "shipments": {
+      "columns": ["accounts_user_id", "accounts_entity_id", "shipment_no", "email", "supplier_id", "from_pincode", "to_pincode", "shipment_date", "product_code", "cod_value", "total_price", "supplier_cost", "pre_gst_total_price", "pre_gst_total_partner_cost", "product", "product_value", "cancelled_at", "bulk_id", "tracking_id", "rto_tracking_id", "tracking_status", "booking_status", "booking_medium", "is_offline", "invoice_weight", "billable", "partner_bill", "reference1", "reference2", "branch_id", "shipment_input_id", "pickup_location_id", "consignee_location_id", "billing_location_id", "return_location_id", "channel_id", "is_stressed", "created_at", "updated_at", "deleted_at"],
+      "scoped": true,
+      "scoping_column": "accounts_entity_id",
+      "description": "Core shipment records with tracking information, pricing, and logistics details. Central table for shipment lifecycle management.",
+      "examples": [
+        {
+          "query": "Show me all shipments",
+          "sql": "SELECT * FROM shipments"
+        },
+        {
+          "query": "track shipment by shipment no",
+          "sql": "SELECT * FROM shipments WHERE shipment_no = '123'"
+        },
+        {
+          "query": "Show me all prepaid shipments today",
+          "sql": "SELECT * FROM shipments WHERE cod_value = 0 AND shipment_date = CURDATE()"
+        },
+        {
+          "query": "Show me all COD shipments today",
+          "sql": "SELECT * FROM shipments WHERE cod_value > 0 AND shipment_date = CURDATE()"
+        },
+        {
+          "query": "Show me all shipments by supplier name",
+          "sql": "SELECT s.name AS supplier_name, COUNT(s.shipment_no) AS shipment_count FROM shipments sh JOIN suppliers s ON sh.supplier_id = s.id GROUP BY s.name"
+        },
+        {
+          "query": "Delivered shipments today",
+          "sql": "SELECT * FROM shipments WHERE tracking_status = '1900' AND DATE(updated_at) = CURDATE()"
+        },
+        {
+          "query": "Shipments in transit by supplier",
+          "sql": "SELECT s.supplier_id, COUNT(*) AS in_transit FROM shipments s WHERE s.tracking_status IN ('1220','1400','1700') GROUP BY s.supplier_id"
+        },
+        {
+          "query": "How many shipments we got today?",
+          "sql": "SELECT COUNT(*) FROM shipments WHERE DATE(shipment_date) = CURDATE() AND accounts_entity_id = '123'"
+        },
+        {
+          "query": "revenue",
+          "sql": "SELECT SUM(total_price) FROM shipments WHERE accounts_entity_id = '123'"
+        },
+        {
+          "query": "Shipments in transit",
+          "sql": "SELECT * FROM shipments WHERE tracking_status IN ('1220', '1400', '1700') AND accounts_entity_id = '123'"
+        },
+        {
+          "query": "Average shipment value",
+          "sql": "SELECT AVG(total_price) FROM shipments WHERE accounts_entity_id = '123'"
+        },
+        {
+          "query": "Shipments with customer names",
+          "sql": "SELECT sh.*, CONCAT(u.first_name, ' ', u.last_name) AS customer_name FROM shipments sh JOIN users u ON sh.accounts_user_id = u.accounts_user_id WHERE sh.accounts_entity_id = '123'"
+        },
+        {
+          "query": "Shipments last 30 days",
+          "sql": "SELECT * FROM shipments WHERE shipment_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND accounts_entity_id = '123'"
+        },
+        {
+          "query": "Order status for each shipment",
+          "sql": "SELECT s.shipment_no, (SELECT o.status FROM orders o WHERE o.shipment_no = s.shipment_no) AS order_status FROM shipments s"
+        },
+        {
+          "query": "Child AWB numbers with shipments",
+          "sql": "SELECT s.shipment_no, (SELECT GROUP_CONCAT(ca.child_awb_number) FROM child_awb_numbers ca WHERE ca.shipment_no = s.shipment_no) AS child_awbs FROM shipments s"
+        },
+        {
+          "query": "Tracking status message (special 1880 rule)",
+          "sql": "SELECT s.shipment_no, (SELECT IF(s.tracking_status = 1880, (SELECT std.partner_comment FROM shipment_tracking_details std WHERE std.shipment_no = s.shipment_no AND std.tracking_status = s.tracking_status ORDER BY tracking_event_date_time LIMIT 1), vtcm.status_message) FROM vamaship_tracking_codes_master vtcm WHERE s.tracking_status = vtcm.new_code LIMIT 1) AS tracking_status_message FROM shipments s"
+        },
+        {
+          "query": "Debit-credit difference by shipment",
+          "sql": "SELECT s.shipment_no, (SELECT SUM(debit_amount) - SUM(credit_amount) FROM transactions t WHERE t.shipment_no = s.shipment_no) AS debit_credit_difference FROM shipments s"
+        },
+        {
+          "query": "Shipments with channel names",
+          "sql": "SELECT s.shipment_no, cm.channel_name FROM shipments s LEFT JOIN channel_masters cm ON cm.channel_code = s.channel_id"
+        },
+        {
+          "query": "Complete shipment details with addresses and tracking",
+          "sql": "SELECT s.shipment_no, s.tracking_id, s.rto_tracking_id, s.supplier_id, s.booking_status, s.tracking_status, s.booking_medium, s.bulk_id, s.reference1, s.product_code, s.cancelled_at, s.created_at AS shipment_date, s.from_pincode, s.to_pincode, s.cod_value, s.channel_id, si.mode_transport, si.shipment_type, si.service_type, si.lr_num, milestones.rto_delivered_date, milestones.rto_initiated_date, milestones.delivered_date, org.full_name AS seller_name, org.contact AS seller_contact, org.city AS origin_city, org.state AS origin_state, dest.full_name AS consignee_name, dest.contact AS consignee_contact, dest.city AS destination_city, dest.state AS destination_state, dest.pincode AS destination_pincode, sup.name AS partner_name, sup.logo AS partner_logo, cm.channel_name, si.acknowledge, (SELECT status FROM orders WHERE s.shipment_no = orders.shipment_no) AS status, (SELECT GROUP_CONCAT(child_awb_number) FROM child_awb_numbers ca WHERE s.shipment_no = ca.shipment_no) AS child_awb_number, (SELECT user_reason FROM shipment_cancellation_requests scr WHERE s.shipment_no = scr.shipment_no ORDER BY scr.created_at DESC LIMIT 1) AS user_reason, (SELECT tracking_category FROM vamaship_tracking_codes_master vtcm WHERE s.tracking_status = vtcm.new_code LIMIT 1) AS tracking_category, (SELECT IF(s.tracking_status = 1880, (SELECT std.partner_comment FROM shipment_tracking_details std WHERE std.shipment_no = s.shipment_no AND std.tracking_status = s.tracking_status ORDER BY tracking_event_date_time LIMIT 1), vtcm.status_message) FROM vamaship_tracking_codes_master vtcm WHERE s.tracking_status = vtcm.new_code LIMIT 1) AS tracking_status_message, milestones.partner_last_update AS partner_last_update, milestones.estimated_delivery_date AS estimated_delivery_date, (SELECT SUM(debit_amount) - SUM(credit_amount) FROM transactions WHERE transactions.shipment_no = s.shipment_no) AS debit_credit_difference FROM shipments s LEFT JOIN shipment_addresses dest ON s.shipment_no = dest.shipment_no AND dest.type = 'consignee' LEFT JOIN shipment_addresses org ON s.shipment_no = org.shipment_no AND org.type = 'pickup' LEFT JOIN shipment_inputs si ON si.shipment_no = s.shipment_no LEFT JOIN shipment_milestone_dates milestones ON milestones.shipment_no = s.shipment_no LEFT JOIN suppliers sup ON sup.id = s.supplier_id LEFT JOIN channel_masters cm ON cm.channel_code = s.channel_id"
+        },
+        {
+          "query": "Shipments awaiting pickup",
+          "sql": "SELECT s.shipment_no, s.tracking_status, s.tracking_id, s.shipment_date, s.reference1, s.supplier_id, tcm.status_message, std.partner_comment, org.city as origin_city, dest.city as destination_city, pickup_id, s.pickup_location_id AS location_id, org.address_line_1 AS address, (SELECT count(1) FROM shipment_tracking_details WHERE s.shipment_no = shipment_tracking_details.shipment_no and tracking_status = 1100) as pickup_attempts FROM shipments s LEFT JOIN shipment_tracking_details as std ON s.shipment_no = std.shipment_no AND s.tracking_status = std.tracking_status LEFT JOIN vamaship_tracking_codes_master as tcm ON tcm.new_code = s.tracking_status LEFT JOIN locations as org ON s.pickup_location_id = org.id LEFT JOIN locations as dest ON s.consignee_location_id = dest.id LEFT JOIN pickup_ids ON s.accounts_entity_id = pickup_ids.accounts_entity_id AND s.pickup_location_id = pickup_ids.location_id AND s.supplier_id = pickup_ids.supplier_id AND pickup_ids.pickup_id_date >= CURDATE() WHERE s.tracking_status < 1200 AND s.tracking_status NOT IN (1050, 1025) AND s.created_at >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH) AND s.cancelled_at IS NULL AND s.booking_status = 1 GROUP BY s.shipment_no"
+        },
+        {
+          "query": "Detailed shipment information with weights and addresses",
+          "sql": "SELECT s.shipment_no, s.tracking_id, s.bulk_id, s.rto_tracking_id, sup.name as supplier_name, IF(s.cod_value > 0, 'COD', 'PREPAID') as shipment_payment_mode, s.cod_value, s.accounts_user_id, s.accounts_entity_id, CONCAT(si.shipment_type, '-', si.mode_transport, '-', si.service_type) as shipment_type, CONCAT(vtcm.status_message, ' (', s.tracking_status, ')') as status, s.from_pincode, s.to_pincode, s.product_code, s.total_price, s.product, s.shipment_zone, (SELECT shipment_weight FROM shipment_weight_histories as swh WHERE swh.shipment_no = s.shipment_no and weight_category = 'Entered Weight' limit 1) as entered_weight, (SELECT shipment_weight FROM shipment_weight_histories as swh WHERE swh.shipment_no = s.shipment_no and weight_category = 'Entered Volumetric Weight' limit 1) as entered_volumetric_weight, (SELECT shipment_weight FROM shipment_weight_histories as swh WHERE swh.shipment_no = s.shipment_no and weight_category = 'Booked Weight' limit 1) as booked_weight, pickup.full_name as shipper_name, pickup.email as shipper_email, pickup.contact as shipper_contact, CONCAT(pickup.address_line_1, ',', IFNULL(pickup.address_line_2, ''), ',', IFNULL(pickup.address_line_3, ''), ',', pickup.pincode, ',', pickup.city, ',', pickup.state) as shipper_address, consignee.full_name as consignee_name, consignee.email as consignee_email, consignee.contact as consignee_contact, CONCAT(consignee.address_line_1, ',', IFNULL(consignee.address_line_2, ''), ',', IFNULL(consignee.address_line_3, ''), ',', consignee.pincode, ',', consignee.city, ',', consignee.state) as consignee_address FROM shipments s LEFT JOIN suppliers ON suppliers.id = s.supplier_id LEFT JOIN shipment_inputs as si ON si.shipment_no = s.shipment_no LEFT JOIN vamaship_tracking_codes_master as vtcm ON vtcm.new_code = s.tracking_status LEFT JOIN shipment_milestone_dates as milestones ON milestones.shipment_no = s.shipment_no LEFT JOIN shipment_addresses as pickup ON s.shipment_no = pickup.shipment_no AND pickup.type = 'pickup' LEFT JOIN shipment_addresses as consignee ON s.shipment_no = consignee.shipment_no AND consignee.type = 'consignee'"
+        },
+        {
+          "query": "Package details with weight history",
+          "sql": "SELECT s.product as product_description, s.product_value as product_value, sp.weight as weight, sp.weight_unit as weight_unit, sp.package_count as package_count, sp.length, sp.width, sp.height, sp.unit as dimensions_unit, (SELECT shipment_weight FROM shipment_weight_histories WHERE weight_category = 'Entered Weight' and shipment_weight_histories.shipment_no = s.shipment_no limit 1) as entered_weight, (SELECT shipment_weight FROM shipment_weight_histories WHERE weight_category = 'Entered Volumetric Weight' and shipment_weight_histories.shipment_no = s.shipment_no limit 1) as volumetric_weight, (SELECT shipment_weight FROM shipment_weight_histories WHERE weight_category = 'Booked Weight' and shipment_weight_histories.shipment_no = s.shipment_no limit 1) as booked_weight FROM shipments s LEFT JOIN shipment_packages sp ON sp.shipment_input_id = s.shipment_input_id"
+        },
+        {
+          "query": "Shipment cost breakdown with entity info",
+          "sql": "SELECT scb.amount as total_without_tax, scb.total_amount, scb.cgst, scb.igst, scb.sgst, scb.gst, scb.total_gst, scb.charge_head, scb.created_at, e.is_whatsapp_tracking_enabled, e.whatsapp_tracking_charges FROM shipment_cost_breakups scb JOIN shipments s ON scb.shipment_no = s.shipment_no JOIN entities e ON s.accounts_entity_id = e.accounts_entity_id WHERE scb.shipment_no = 'SH123'"
+        },
+        {
+          "query": "WhatsApp logs for shipment",
+          "sql": "SELECT s.shipment_no, wl.message_id, wl.customer_phone, wl.message, wl.replied_on, wl.reply_text, wl.response, wl.event_type, IF(wl.api_user_id = 1, 1, 0) as cost, wl.created_at FROM shipments s LEFT JOIN whatsapp_logs as wl ON s.shipment_no = wl.shipment_no WHERE s.shipment_no = 'SH123' AND wl.shipment_no IS NOT NULL ORDER BY wl.created_at"
+        },
+        {
+          "query": "Shipment transactions",
+          "sql": "SELECT payment_type, transaction_amount, remark, created_at FROM transactions WHERE shipment_no = 'SH123' ORDER BY created_at DESC"
+        }
+      ]
+    },
+    "shipment_tracking_details": {
+      "columns": ["id", "shipment_no", "awb_number", "supplier_id", "tracking_status", "partner_tracking_code", "tracking_event_date_time", "location", "partner_comment", "created_at", "updated_at", "deleted_at", "additional_details"],
+      "scoped": false,
+      "description": "Tracking event history for shipments including status updates, location changes, and partner comments.",
+      "examples": [
+        {
+          "query": "Latest tracking event per shipment",
+          "sql": "SELECT std.* FROM shipment_tracking_details std JOIN (SELECT shipment_no, MAX(tracking_event_date_time) AS last_event FROM shipment_tracking_details GROUP BY shipment_no) t ON std.shipment_no = t.shipment_no AND std.tracking_event_date_time = t.last_event"
+        },
+        {
+          "query": "All RTO events for a supplier",
+          "sql": "SELECT * FROM shipment_tracking_details WHERE supplier_id = 10 AND tracking_status IN ('2000','2020','2025','2030')"
+        },
+        {
+          "query": "Enriched tracking with status message",
+          "sql": "SELECT std.*, v.status_message FROM shipment_tracking_details std JOIN vamaship_tracking_codes_master v ON std.tracking_status = v.new_code"
+        },
+        {
+          "query": "Tracking events by supplier",
+          "sql": "SELECT s.name, COUNT(*) FROM shipment_tracking_details std JOIN suppliers s ON std.supplier_id = s.id GROUP BY s.name"
+        },
+        {
+          "query": "Latest tracking for specific shipment",
+          "sql": "SELECT * FROM shipment_tracking_details WHERE shipment_no = 'SH123' ORDER BY tracking_event_date_time DESC LIMIT 1"
+        },
+        {
+          "query": "All RTO events",
+          "sql": "SELECT * FROM shipment_tracking_details WHERE tracking_status IN ('2000', '2020', '2025', '2030')"
+        }
+      ]
+    },
+    "shipment_line_items": {
+      "columns": ["id", "shipment_no", "order_id", "product_id", "channel_line_item_id", "channel_variant_id", "product_name", "quantity", "status", "weight", "weight_unit", "weight_in_kgs", "product_value", "discounted_product_value", "cancelled_at", "created_at", "updated_at", "deleted_at"],
+      "scoped": false,
+      "description": "Individual line items within shipments, supporting multi-item shipments and channel-specific product variants.",
+      "examples": [
+        {
+          "query": "Item count per order",
+          "sql": "SELECT order_id, SUM(quantity) AS total_items FROM shipment_line_items GROUP BY order_id"
+        },
+        {
+          "query": "Line items with missing weight",
+          "sql": "SELECT * FROM shipment_line_items WHERE weight_in_kgs IS NULL OR weight_in_kgs = 0"
+        },
+        {
+          "query": "Line items by product name",
+          "sql": "SELECT * FROM shipment_line_items WHERE product_name LIKE '%Shoes%'"
+        },
+        {
+          "query": "Total items by shipment",
+          "sql": "SELECT shipment_no, SUM(quantity) as total_items FROM shipment_line_items GROUP BY shipment_no"
+        },
+        {
+          "query": "Line items by product",
+          "sql": "SELECT product_name, COUNT(*) as item_count FROM shipment_line_items GROUP BY product_name ORDER BY item_count DESC"
+        }
+      ]
+    },
+    "shipment_packages": {
+      "columns": ["id", "shipment_no", "shipment_input_id", "package_count", "length", "width", "height", "unit", "weight", "weight_unit", "volumetric_weight", "created_at", "updated_at", "deleted_at"],
+      "scoped": false,
+      "description": "Package dimensions and weight details for shipments, supporting volumetric weight calculations.",
+      "examples": [
+        {
+          "query": "Total volumetric weight by shipment",
+          "sql": "SELECT shipment_no, SUM(volumetric_weight) AS total_vol_weight FROM shipment_packages GROUP BY shipment_no"
+        },
+        {
+          "query": "Largest package by dimensions",
+          "sql": "SELECT *, (length*width*height) AS volume FROM shipment_packages ORDER BY volume DESC LIMIT 10"
+        }
+      ]
+    },
+    "shipment_addresses": {
+      "columns": ["id", "shipment_no", "type", "full_name", "contact", "city", "state", "pincode", "created_at", "updated_at"],
+      "scoped": false,
+      "description": "Per-shipment denormalized address snapshots. Used for origin (pickup) and destination (consignee) details.",
+      "examples": [
+        {
+          "query": "Consignee details for a shipment",
+          "sql": "SELECT full_name, contact, city, state, pincode FROM shipment_addresses WHERE shipment_no = 'SH123' AND type = 'consignee'"
+        },
+        {
+          "query": "Pickup (origin) details for a shipment",
+          "sql": "SELECT full_name, contact, city, state FROM shipment_addresses WHERE shipment_no = 'SH123' AND type = 'pickup'"
+        }
+      ]
+    },
+    "shipment_inputs": {
+      "columns": ["id", "shipment_no", "mode_transport", "shipment_type", "service_type", "lr_num", "acknowledge", "created_at", "updated_at"],
+      "scoped": false,
+      "description": "Operational input metadata captured at booking time (mode, service, LR number, acknowledgements).",
+      "examples": [
+        {
+          "query": "Shipments by mode of transport",
+          "sql": "SELECT si.mode_transport, COUNT(*) FROM shipment_inputs si GROUP BY si.mode_transport"
+        }
+      ]
+    },
+    "shipment_milestone_dates": {
+      "columns": ["id", "shipment_no", "partner_last_update", "estimated_delivery_date", "rto_delivered_date", "rto_initiated_date", "delivered_date", "created_at", "updated_at"],
+      "scoped": false,
+      "description": "Computed/logged milestone timestamps per shipment for status auditing and ETA calculations.",
+      "examples": [
+        {
+          "query": "Estimated delivery dates for shipments",
+          "sql": "SELECT shipment_no, estimated_delivery_date FROM shipment_milestone_dates WHERE estimated_delivery_date IS NOT NULL"
+        }
+      ]
+    },
+    "channel_masters": {
+      "columns": ["id", "channel_code", "channel_name", "created_at", "updated_at"],
+      "scoped": false,
+      "description": "Master list of sales channels keyed by code; joined from shipments.channel_id."
+    },
+    "child_awb_numbers": {
+      "columns": ["id", "shipment_no", "child_awb_number", "created_at", "updated_at"],
+      "scoped": false,
+      "description": "Child AWB numbers linked to a parent shipment.",
+      "examples": [
+        {
+          "query": "Child AWBs for a shipment",
+          "sql": "SELECT GROUP_CONCAT(child_awb_number) FROM child_awb_numbers WHERE shipment_no = 'SH123'"
+        }
+      ]
+    },
+    "suppliers": {
+      "columns": ["id", "name", "email", "password", "is_active", "ip_address", "created_at", "updated_at", "deleted_at", "logo", "partner_logo", "supplier_api_file"],
+      "scoped": false,
+      "description": "Shipping partners and logistics providers who handle actual shipment delivery and tracking.",
+      "examples": [
+        {
+          "query": "Active suppliers",
+          "sql": "SELECT * FROM suppliers WHERE is_active = 1"
+        },
+        {
+          "query": "Find supplier by name",
+          "sql": "SELECT * FROM suppliers WHERE name LIKE '%Delhivery%'"
+        },
+        {
+          "query": "How many suppliers?",
+          "sql": "SELECT COUNT(*) FROM suppliers WHERE is_active = 1"
+        },
+        {
+          "query": "Suppliers with shipment counts",
+          "sql": "SELECT s.name, COUNT(sh.shipment_no) as shipment_count FROM suppliers s LEFT JOIN shipments sh ON s.id = sh.supplier_id GROUP BY s.name ORDER BY shipment_count DESC"
+        }
+      ]
+    },
+    "vamaship_tracking_codes_master": {
+      "columns": ["id", "old_code", "new_code", "status_message", "tracking_category", "created_at", "updated_at", "deleted_at"],
+      "scoped": true,
+      "scoping_column": "new_code",
+      "description": "Master list of standardized Vamaship tracking codes and their messages. Used to normalize partner-specific tracking statuses.",
+      "examples": [
+        {
+          "query": "All tracking codes",
+          "sql": "SELECT * FROM vamaship_tracking_codes_master"
+        },
+        {
+          "query": "Delivered status code",
+          "sql": "SELECT * FROM vamaship_tracking_codes_master WHERE new_code = '1900'"
+        },
+        {
+          "query": "In transit status codes",
+          "sql": "SELECT * FROM vamaship_tracking_codes_master WHERE new_code IN ('1220', '1400', '1700')"
+        }
+      ]
+    },
+    "partner_tracking_codes": {
+      "columns": ["id", "partner_tracking_code", "vamaship_tracking_code", "partner_id", "deactivated_on", "created_at", "updated_at"],
+      "scoped": false,
+      "description": "Mapping of partner-specific tracking codes to standardized Vamaship tracking codes for each supplier (partner.)",
+      "examples": [
+        {
+          "query": "Partner code mappings",
+          "sql": "SELECT * FROM partner_tracking_codes WHERE partner_id = 1"
+        },
+        {
+          "query": "Active partner mappings",
+          "sql": "SELECT * FROM partner_tracking_codes WHERE deactivated_on IS NULL"
+        }
+      ]
+    },
+    "transactions": {
+      "columns": ["id", "vama_transaction_id", "sac", "voucher_no", "order_id", "accounts_entity_id", "accounts_user_id", "payment_mode", "payment_type", "accounting_type_id", "transaction_data", "transaction_amount", "transaction_unique_id", "transaction_by", "remark", "invoice_no", "quick_books_id", "qb_transaction_id", "qb_payment_id", "status", "created_at", "updated_at", "deleted_at", "request_parameters", "gateway_name", "payment_request_token", "payment_api_response", "payment_status", "reference_table", "reference_id", "master_user_id", "received_amount", "credit_amount", "debit_amount", "transaction_status", "shipment_no"],
+      "scoped": true,
+      "scoping_column": "accounts_entity_id",
+      "description": "Financial transactions including payments, refunds, and accounting entries with QuickBooks integration.",
+      "examples": [
+        {
+          "query": "Successful online payments for an entity",
+          "sql": "SELECT * FROM transactions WHERE accounts_entity_id = '123' AND payment_mode = 'online' AND payment_status = 'Completed'"
+        },
+        {
+          "query": "Refund/negative amount transactions",
+          "sql": "SELECT * FROM transactions WHERE transaction_amount < 0 AND accounts_entity_id = '123'"
+        },
+        {
+          "query": "Transactions linked to orders in the last 30 days",
+          "sql": "SELECT t.* FROM transactions t JOIN orders o ON t.order_id = o.id WHERE t.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) AND t.accounts_entity_id = '123'"
+        },
+        {
+          "query": "How many transactions today?",
+          "sql": "SELECT COUNT(*) FROM transactions WHERE DATE(created_at) = CURDATE() AND accounts_entity_id = '123'"
+        },
+        {
+          "query": "Total transaction amount last week",
+          "sql": "SELECT SUM(transaction_amount) FROM transactions WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND accounts_entity_id = '123'"
+        },
+        {
+          "query": "Transactions by payment mode",
+          "sql": "SELECT payment_mode, COUNT(*) as transaction_count FROM transactions WHERE accounts_entity_id = '123' GROUP BY payment_mode"
+        }
+      ]
+    },
+    "cod_transactions": {
+      "columns": ["id", "cod_ref_no", "order_no", "awb_no", "shipment_date", "cod_amount", "supplier_id", "status", "old_status", "delivered_date", "cod_collection_ref_no", "cod_collected", "cod_collection_pending", "cod_collection_date", "payment_mode", "payment_ref_no", "paid_amount", "pending_amount", "payment_date", "created_at", "updated_at", "deleted_at", "accounts_entity_id", "accounts_user_id"],
+      "scoped": true,
+      "scoping_column": "accounts_entity_id",
+      "description": "Cash on Delivery transaction tracking including collection status, payment processing, and reconciliation.",
+      "examples": [
+        {
+          "query": "Pending COD to be collected",
+          "sql": "SELECT * FROM cod_transactions WHERE cod_collection_pending > 0 AND accounts_entity_id = '123'"
+        },
+        {
+          "query": "COD collected this week",
+          "sql": "SELECT * FROM cod_transactions WHERE cod_collected > 0 AND YEARWEEK(cod_collection_date, 1) = YEARWEEK(CURDATE(), 1) AND accounts_entity_id = '123'"
+        },
+        {
+          "query": "Receivable COD shipments",
+          "sql": "SELECT * FROM cod_transactions WHERE status IN (1,2) AND accounts_entity_id = '123'"
+        },
+        {
+          "query": "COD with supplier info",
+          "sql": "SELECT ct.*, s.name as supplier_name FROM cod_transactions ct JOIN suppliers s ON ct.supplier_id = s.id WHERE ct.accounts_entity_id = '123'"
+        },
+        {
+          "query": "Total COD amount pending",
+          "sql": "SELECT SUM(cod_collection_pending) FROM cod_transactions WHERE accounts_entity_id = '123'"
+        },
+        {
+          "query": "COD transactions by status",
+          "sql": "SELECT status, COUNT(*) as count FROM cod_transactions WHERE accounts_entity_id = '123' GROUP BY status"
+        }
+      ]
+    },
+    "invoices": {
+      "columns": ["id", "accounts_entity_id", "accounts_user_id", "invoice_no", "ref_no", "category_id", "invoice_type", "invoice_ref_no", "order_ids", "data", "total_without_tax", "tax", "service_tax", "swachh_bharat_cess", "krishi_kalyan_cess", "igst", "sgst", "cgst", "tax_total", "duty_amount", "total", "paid", "pending", "quick_books_id", "qb_transaction_id", "qb_amount", "payment_data", "payment_id", "status", "email_status", "created_at", "updated_at", "master_user_id", "valuable", "remark", "file_link", "invoice_date", "deleted_at"],
+      "scoped": true,
+      "scoping_column": "accounts_entity_id",
+      "description": "Customer invoices with GST calculations, QuickBooks integration, and payment tracking.",
+      "examples": [
+        {
+          "query": "Unpaid invoices for an entity",
+          "sql": "SELECT * FROM invoices WHERE accounts_entity_id = '123' AND pending > 0"
+        },
+        {
+          "query": "Invoices in a date range",
+          "sql": "SELECT * FROM invoices WHERE invoice_date BETWEEN '2025-09-01' AND '2025-09-30' AND accounts_entity_id = '123'"
+        },
+        {
+          "query": "Monthly GST totals",
+          "sql": "SELECT DATE_FORMAT(invoice_date, '%Y-%m') AS month, SUM(cgst+sgst+igst) AS total_gst FROM invoices WHERE accounts_entity_id = '123' GROUP BY DATE_FORMAT(invoice_date, '%Y-%m') ORDER BY month"
+        },
+        {
+          "query": "How many invoices this month?",
+          "sql": "SELECT COUNT(*) FROM invoices WHERE invoice_date >= DATE_FORMAT(CURDATE(), '%Y-%m-01') AND accounts_entity_id = '123'"
+        },
+        {
+          "query": "Total invoice amount pending",
+          "sql": "SELECT SUM(pending) FROM invoices WHERE accounts_entity_id = '123'"
+        },
+        {
+          "query": "Invoices by status",
+          "sql": "SELECT status, COUNT(*) as invoice_count FROM invoices WHERE accounts_entity_id = '123' GROUP BY status"
+        }
+      ]
+    },
+    "ndr": {
+      "columns": ["id", "awb_no", "shipment_no", "customer_reference_number_1", "customer_reference_number_2", "tracking_status_code", "partner_comment", "consignee_name", "consignee_number", "accounts_entity_id", "accounts_user_id", "customer_response", "customer_comment", "ndr_date", "consignee_response", "consignee_comment", "created_at", "updated_at", "deleted_at", "dispatched_count", "undelivered_attempts", "extra_comment"],
+      "scoped": true,
+      "scoping_column": "accounts_entity_id",
+      "description": "Non-Delivery Reports tracking delivery attempts, customer responses, and resolution actions.",
+      "examples": [
+        {
+          "query": "Open NDRs in last 7 days",
+          "sql": "SELECT * FROM ndr WHERE ndr_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND (customer_response IS NULL OR customer_response = '') AND accounts_entity_id = '123'"
+        },
+        {
+          "query": "NDRs with multiple failed attempts",
+          "sql": "SELECT * FROM ndr WHERE undelivered_attempts >= 2 AND accounts_entity_id = '123'"
+        },
+        {
+          "query": "How many open NDRs?",
+          "sql": "SELECT COUNT(*) FROM ndr WHERE (customer_response IS NULL OR customer_response = '') AND accounts_entity_id = '123'"
+        },
+        {
+          "query": "NDRs by attempt count",
+          "sql": "SELECT undelivered_attempts, COUNT(*) as ndr_count FROM ndr WHERE accounts_entity_id = '123' GROUP BY undelivered_attempts"
+        }
+      ]
+    },
+    "npr": {
+      "columns": ["id", "vamaship_location_id", "accounts_entity_id", "partner_id", "partner_warehouse_id", "partner_comment", "npr_date", "shipment_no", "customer_response", "customer_comment", "created_at", "updated_at", "deleted_at"],
+      "scoped": true,
+      "scoping_column": "accounts_entity_id",
+      "description": "Non-Pickup Reports for tracking pickup failures and customer communication.",
+      "examples": [
+        {
+          "query": "Open NPRs (no customer response)",
+          "sql": "SELECT * FROM npr WHERE (customer_response IS NULL OR customer_response = '') AND accounts_entity_id = '123'"
+        },
+        {
+          "query": "NPRs for a partner this month",
+          "sql": "SELECT * FROM npr WHERE partner_id = 5 AND npr_date >= DATE_FORMAT(CURDATE(), '%Y-%m-01') AND accounts_entity_id = '123'"
+        },
+        {
+          "query": "How many open NPRs?",
+          "sql": "SELECT COUNT(*) FROM npr WHERE (customer_response IS NULL OR customer_response = '') AND accounts_entity_id = '123'"
+        }
+      ]
+    },
+    "products": {
+      "columns": ["id", "product_name", "user_id", "l", "b", "h", "unit_id", "w", "package_type", "product_value", "extra", "created_at", "updated_at"],
+      "scoped": false,
+      "description": "Product catalog with dimensions, weight, and packaging information for shipping calculations.",
+      "examples": [
+        {
+          "query": "All products",
+          "sql": "SELECT * FROM products"
+        },
+        {
+          "query": "Products by name",
+          "sql": "SELECT * FROM products WHERE product_name LIKE '%Shoes%'"
+        },
+        {
+          "query": "How many products?",
+          "sql": "SELECT COUNT(*) FROM products"
+        }
+      ]
+    },
+    "package_masters": {
+      "columns": ["id", "accounts_entity_id", "accounts_user_id", "package_identifier", "channel_mapping_id", "channel_name", "autogenerated", "length", "breadth", "height", "unit", "created_at", "updated_at", "deleted_at"],
+      "scoped": true,
+      "scoping_column": "accounts_entity_id",
+      "description": "Master package templates with predefined dimensions for consistent packaging across shipments."
+    },
+    "entity_channel_mappings": {
+      "columns": ["id", "accounts_entity_id", "accounts_user_id", "channel_id", "channel_name", "channel_unique_id", "channel_url", "channel_token", "channel_meta", "created_at", "updated_at", "deleted_at"],
+      "scoped": true,
+      "scoping_column": "accounts_entity_id",
+      "description": "Integration mappings between entities and external channels (e.g., Shopify, WooCommerce) with authentication tokens.",
+      "examples": [
+        {
+          "query": "Channel mappings for entity",
+          "sql": "SELECT * FROM entity_channel_mappings WHERE accounts_entity_id = '123'"
+        },
+        {
+          "query": "Mappings by channel",
+          "sql": "SELECT channel_name, COUNT(*) FROM entity_channel_mappings WHERE accounts_entity_id = '123' GROUP BY channel_name"
+        }
+      ]
+    },
+    "channel_webhooks": {
+      "columns": ["id", "accounts_entity_id", "webhook_id", "type", "format", "api_version", "address", "webhook_meta", "created_at", "updated_at", "deleted_at"],
+      "scoped": true,
+      "scoping_column": "accounts_entity_id",
+      "description": "Webhook configurations for real-time notifications to external systems about shipment status changes.",
+      "examples": [
+        {
+          "query": "Webhooks for entity",
+          "sql": "SELECT * FROM channel_webhooks WHERE accounts_entity_id = '123'"
+        },
+        {
+          "query": "Active webhooks",
+          "sql": "SELECT * FROM channel_webhooks WHERE accounts_entity_id = '123' AND deleted_at IS NULL"
+        }
+      ]
+    },
+    "payment_histories": {
+      "columns": ["id", "accounts_entity_id", "transaction_id", "payment_mode", "amount", "status", "gateway_response", "created_at", "updated_at"],
+      "scoped": true,
+      "scoping_column": "accounts_entity_id",
+      "description": "Payment transaction history with gateway responses for audit and reconciliation purposes.",
+      "examples": [
+        {
+          "query": "Payment history for entity",
+          "sql": "SELECT * FROM payment_histories WHERE accounts_entity_id = '123'"
+        },
+        {
+          "query": "Successful payments",
+          "sql": "SELECT * FROM payment_histories WHERE status = 'success' AND accounts_entity_id = '123'"
+        },
+        {
+          "query": "Total payment amount",
+          "sql": "SELECT SUM(amount) FROM payment_histories WHERE accounts_entity_id = '123'"
+        }
+      ]
+    },
+    "online_payment_requests": {
+      "columns": ["id", "name", "email", "mobile", "amount", "product", "payment_token", "ecom2_user_id", "bulk_id", "api_token", "transaction_id", "gateway_transaction_id", "payment_status", "payment_mode", "received_amount", "error_message", "request_parameters", "payment_response", "gateway_name", "created_at", "updated_at", "deleted_at", "completed_at"],
+      "scoped": false,
+      "description": "Online payment requests with gateway integration for processing customer payments."
+    },
+    "quote_requests": {
+      "columns": ["id", "reference_no", "request_data", "response_data", "quote_total", "quote_status", "created_at", "updated_at", "deleted_at"],
+      "scoped": false,
+      "description": "Shipping quote requests and responses for price estimation before order placement."
+    },
+    "weight_disputes": {
+      "columns": ["id", "accounts_entity_id", "shipment_no", "disputed_weight", "actual_weight", "dispute_reason", "status", "resolved_by", "resolved_at", "created_at", "updated_at"],
+      "scoped": true,
+      "scoping_column": "accounts_entity_id",
+      "description": "Weight dispute records for shipments where actual weight differs from declared weight.",
+      "examples": [
+        {
+          "query": "All weight disputes",
+          "sql": "SELECT * FROM weight_disputes WHERE accounts_entity_id = '123'"
+        },
+        {
+          "query": "Unresolved disputes",
+          "sql": "SELECT * FROM weight_disputes WHERE status != 'resolved' AND accounts_entity_id = '123'"
+        },
+        {
+          "query": "Disputes by reason",
+          "sql": "SELECT dispute_reason, COUNT(*) FROM weight_disputes WHERE accounts_entity_id = '123' GROUP BY dispute_reason"
+        },
+        {
+          "query": "Disputes with shipment info",
+          "sql": "SELECT wd.*, sh.total_price FROM weight_disputes wd JOIN shipments sh ON wd.shipment_no = sh.shipment_no WHERE wd.accounts_entity_id = '123'"
+        },
+        {
+          "query": "How many weight disputes?",
+          "sql": "SELECT COUNT(*) FROM weight_disputes WHERE accounts_entity_id = '123'"
+        }
+      ]
+    },
+    "shipment_cancellation_requests": {
+      "columns": ["id", "shipment_no", "shipment_number", "order_id", "accounts_entity_id", "accounts_user_id", "tracking_id", "cancellation_status", "user_reason", "cc_reason", "user_remark", "cc_remark", "cancel_requested_by", "refund_amount", "approved_by", "created_at", "updated_at", "refund_to"],
+      "scoped": false,
+      "description": "Shipment cancellation requests with approval workflow and refund processing."
+    },
+    "ambassadors": {
+      "columns": ["id", "email", "password", "clients", "active", "total_amount", "total_shipments", "created_at", "updated_at", "total_cod_shipments", "sign_up_url", "first_name", "last_name", "future_prospects", "mobile_number", "api_key"],
+      "scoped": false,
+      "description": "Ambassador/affiliate program participants who refer new customers to the platform."
+    },
+    "ambassador_clients_mappings": {
+      "columns": ["id", "ambassador_id", "accounts_entity_id", "accounts_user_id"],
+      "scoped": true,
+      "scoping_column": "accounts_entity_id",
+      "description": "Mapping between ambassadors and their referred clients for commission tracking."
+    },
+    "upsell_products": {
+      "columns": ["id", "accounts_entity_id", "name", "price", "description", "img_url", "store_url", "is_active", "created_at", "updated_at"],
+      "scoped": true,
+      "scoping_column": "accounts_entity_id",
+      "description": "Upsell product recommendations shown to customers during checkout process."
+    },
+    "vendors": {
+      "columns": ["id", "accounts_entity_id", "user_id", "vendor_name", "vendor_reference_id", "email"],
+      "scoped": true,
+      "scoping_column": "accounts_entity_id",
+      "description": "Vendor/supplier information for entities managing multiple vendor relationships."
+    },
+    "pricing_plans": {
+      "columns": ["id", "title", "description", "linked_entity_id", "from_date", "to_date", "creator", "created_at", "updated_at"],
+      "scoped": false,
+      "description": "Pricing plan definitions with validity periods for different customer segments."
+    },
+    "customer_pricing_plans": {
+      "columns": ["id", "pricing_plan_id", "accounts_entity_id", "from_date", "creator", "to_date", "created_at", "updated_at"],
+      "scoped": true,
+      "scoping_column": "accounts_entity_id",
+      "description": "Customer-specific pricing plan assignments with effective date ranges."
+    },
+    "calling_results": {
+      "columns": ["id", "ref_no", "calling_timestamp", "calling_type", "calling_status", "accounts_entity_id", "comment", "link"],
+      "scoped": false,
+      "description": "Call center activity tracking including pre-booking, post-booking, NDR, and delivery calls."
+    },
+    "air_dom_costing": {
+      "columns": ["id", "supplier_id", "costing_logic", "per_slab_cost", "service_tax", "fuel_surcharge", "cod_tax", "created_at", "updated_at", "from_date", "classes", "extra_charges", "volumetric_formula", "accounts_entity_id", "is_reverse"],
+      "scoped": true,
+      "scoping_column": "accounts_entity_id",
+      "description": "Air domestic costing configuration by supplier, including slab definitions and surcharges."
+    },
+    "surface_b2c_costing": {
+      "columns": ["id", "accounts_entity_id", "supplier_id", "costing_logic", "per_slab_cost", "fuel_surcharge", "cod_tax", "created_at", "updated_at", "from_date", "classes", "extra_charges", "volumetric_formula", "is_reverse"],
+      "scoped": true,
+      "scoping_column": "accounts_entity_id",
+      "description": "Surface B2C costing configuration by supplier, including slab definitions and surcharges."
+    },
+    "surface_b2b_rates": {
+      "columns": ["id", "supplier_id", "accounts_entity_id", "route", "rate", "duration", "from_date", "deleted_at", "created_at", "updated_at"],
+      "scoped": true,
+      "scoping_column": "accounts_entity_id",
+      "description": "Surface B2B per-route rates with effective dates and optional durations."
+    },
+    "surface_route_to_slab": {
+      "columns": ["id", "supplier_id", "accounts_entity_id", "slabs", "extra_charges", "from_date", "created_at", "updated_at", "surface_category"],
+      "scoped": true,
+      "scoping_column": "accounts_entity_id",
+      "description": "Serialized slab and charge configuration for surface products (B2C/B2B)."
+    },
+    "surface_b2b_entity_settings": {
+      "columns": ["id", "supplier_id", "accounts_entity_id", "setting", "from_date", "config", "extra", "created_at", "updated_at", "deleted_at"],
+      "scoped": true,
+      "scoping_column": "accounts_entity_id",
+      "description": "Entity-specific settings for surface B2B product behavior and thresholds."
+    },
+    "domestic_pincode_masters": {
+      "columns": ["id", "pincode", "city", "state", "region", "created_at", "updated_at"],
+      "scoped": false,
+      "description": "Master pincode directory mapping to city, state, and region."
+    },
+    "partner_pincode_master": {
+      "columns": ["id", "supplier_id", "pincode", "city", "state", "region", "type", "created_at", "updated_at"],
+      "scoped": false,
+      "description": "Legacy partner pincode availability with type flags (any/express/b2b/b2c)."
+    },
+    "partner_air_pincodes": {
+      "columns": ["id", "supplier_id", "pincode", "is_origin", "durations", "has_cod", "has_express", "created_at", "updated_at", "has_cash", "has_repl", "city", "state", "region", "from_date"],
+      "scoped": false,
+      "description": "Partner air domestic pincode capabilities and attributes."
+    },
+    "partner_surface_b2c_pincodes": {
+      "columns": ["id", "supplier_id", "pincode", "is_origin", "durations", "has_cod", "has_express", "created_at", "updated_at", "has_cash", "has_repl", "city", "state", "region", "from_date"],
+      "scoped": false,
+      "description": "Partner surface B2C pincode capabilities and attributes."
+    },
+    "partner_surface_b2b_pincodes": {
+      "columns": ["id", "supplier_id", "pincode", "is_origin", "has_cod", "has_express", "has_cash", "has_repl", "is_oda", "zone", "created_at", "disabled_on", "updated_at", "city", "state", "region"],
+      "scoped": false,
+      "description": "Partner surface B2B pincode capabilities and attributes."
+    },
+    "partner_pincodes": {
+      "columns": ["id", "supplier_id", "pincode", "city", "state", "region", "from_date", "to_date", "created_at", "deleted_at", "additional_config"],
+      "scoped": false,
+      "description": "Unified partner pincode snapshots with optional validity windows."
+    },
+    "shipment_buy_price": {
+      "columns": ["id", "shipment_no", "total_without_tax", "total_with_tax", "total_tax", "created_at", "updated_at"],
+      "scoped": false,
+      "description": "Computed buy price totals for a shipment."
+    },
+    "supplier_preferences": {
+      "columns": ["id", "accounts_entity_id", "supplier_id", "preference_type", "preference_value", "from_date", "to_date", "created_at", "updated_at"],
+      "scoped": true,
+      "scoping_column": "accounts_entity_id",
+      "description": "Entity preferences for supplier selection and routing decisions."
+    },
+    "advanced_partner_preference_settings": {
+      "columns": ["id", "accounts_entity_id", "setting_name", "setting_value", "from_date", "to_date", "created_at", "updated_at"],
+      "scoped": true,
+      "scoping_column": "accounts_entity_id",
+      "description": "Advanced partner preference configurations for complex routing and supplier selection logic."
+    },
+    "air_international_pricing": {
+      "columns": ["id", "accounts_entity_id", "supplier_id", "from_country", "to_country", "weight_slab", "rate", "from_date", "to_date", "created_at", "updated_at"],
+      "scoped": true,
+      "scoping_column": "accounts_entity_id",
+      "description": "International air shipping pricing by country pairs and weight slabs."
+    },
+    "supplier_invoices": {
+      "columns": ["id", "supplier_id", "accounts_entity_id", "accounts_user_id", "order_id", "order_table_id", "invoice_no", "supplier_name", "awb", "return_awn", "weight", "invoice_amount", "details", "pick_up_date", "invoice_date", "invoice_date_in_excel", "created_by", "updated_by", "status", "created_at", "updated_at", "vama_bill", "vama_cost", "supplier_cost", "rto_cost", "rto_pending_cost", "master_user_id", "remark"],
+      "scoped": false,
+      "description": "Invoices received from suppliers/partners for shipment costs and services."
+    },
+    "pickup_ids": {
+      "columns": ["id", "pickup_address", "supplier_id", "accounts_entity_id", "accounts_user_id", "pickup_id", "weight_sent", "package_count_sent", "pickup_id_date", "created_at"],
+      "scoped": false,
+      "description": "Pickup request IDs and associated metadata for scheduled pickups."
+    },
+    "shipment_weight_delinks": {
+      "columns": ["id", "accounts_entity_id", "shipment_no", "delinked_weight", "delink_reason", "delinked_by", "delinked_at", "created_at", "updated_at"],
+      "scoped": true,
+      "scoping_column": "accounts_entity_id",
+      "description": "Records of weight delinking from shipments for corrections and adjustments."
+    },
+    "entity_settings": {
+      "columns": ["id", "accounts_entity_id", "setting_name", "setting_value", "from_date", "to_date", "created_at", "updated_at"],
+      "scoped": true,
+      "scoping_column": "accounts_entity_id",
+      "description": "Entity-specific configuration settings for business rules and operational parameters."
+    },
+    "entity_callback_urls": {
+      "columns": ["id", "accounts_entity_id", "callback_type", "callback_url", "is_active", "created_at", "updated_at"],
+      "scoped": true,
+      "scoping_column": "accounts_entity_id",
+      "description": "Callback URL configurations for real-time notifications to entity systems."
+    },
+    "customer_api_callback_log": {
+      "columns": ["id", "accounts_entity_id", "callback_url", "request_data", "response_data", "status_code", "created_at"],
+      "scoped": true,
+      "scoping_column": "accounts_entity_id",
+      "description": "Log of API callback attempts to customer systems for audit and debugging."
+    }
+  },
+  "relationships": [
+    {"from": "entity_user_mappings", "to": "entities", "on": "accounts_entity_id"},
+    {"from": "entity_user_mappings", "to": "users", "on": "accounts_user_id"},
+    {"from": "locations", "to": "entities", "on": "accounts_entity_id"},
+    {"from": "orders", "to": "entities", "on": "accounts_entity_id"},
+    {"from": "orders", "to": "users", "on": "accounts_user_id"},
+    {"from": "orders", "to": "locations", "on": "pickup_location_id"},
+    {"from": "orders", "to": "locations", "on": "consignee_location_id"},
+    {"from": "orders", "to": "locations", "on": "billing_location_id"},
+    {"from": "orders", "to": "locations", "on": "return_location_id"},
+    {"from": "orders", "to": "shipments", "on": "shipment_no", "to_column": "shipment_no"},
+    {"from": "shipments", "to": "entities", "on": "accounts_entity_id", "to_column": "accounts_entity_id"},
+    {"from": "shipments", "to": "users", "on": "accounts_entity_id", "to_column": "accounts_entity_id"},
+    {"from": "shipments", "to": "users", "on": "accounts_user_id", "to_column": "accounts_user_id"},
+    {"from": "shipments", "to": "suppliers", "on": "supplier_id", "to_column": "id"},
+    {"from": "shipments", "to": "locations", "on": "pickup_location_id"},
+    {"from": "shipments", "to": "locations", "on": "consignee_location_id"},
+    {"from": "shipments", "to": "locations", "on": "billing_location_id"},
+    {"from": "shipments", "to": "locations", "on": "return_location_id"},
+    {"from": "shipment_tracking_details", "to": "shipments", "on": "shipment_no", "to_column": "shipment_no"},
+    {"from": "shipment_tracking_details", "to": "suppliers", "on": "supplier_id"},
+    {"from": "shipment_line_items", "to": "shipments", "on": "shipment_no", "to_column": "shipment_no"},
+    {"from": "shipment_line_items", "to": "orders", "on": "order_id"},
+    {"from": "shipment_packages", "to": "shipments", "on": "shipment_no", "to_column": "shipment_no"},
+    {"from": "shipments", "to": "shipment_addresses", "on": "shipment_no", "to_column": "shipment_no"},
+    {"from": "shipments", "to": "shipment_inputs", "on": "shipment_no", "to_column": "shipment_no"},
+    {"from": "shipments", "to": "shipment_milestone_dates", "on": "shipment_no", "to_column": "shipment_no"},
+    {"from": "shipments", "to": "channel_masters", "on": "channel_id", "to_column": "channel_code"},
+    {"from": "child_awb_numbers", "to": "shipments", "on": "shipment_no", "to_column": "shipment_no"},
+    {"from": "shipment_cancellation_requests", "to": "shipments", "on": "shipment_no", "to_column": "shipment_no"},
+    {"from": "transactions", "to": "shipments", "on": "shipment_no", "to_column": "shipment_no"},
+    {"from": "transactions", "to": "entities", "on": "accounts_entity_id"},
+    {"from": "transactions", "to": "users", "on": "accounts_user_id"},
+    {"from": "transactions", "to": "orders", "on": "order_id"},
+    {"from": "cod_transactions", "to": "entities", "on": "accounts_entity_id"},
+    {"from": "cod_transactions", "to": "users", "on": "accounts_user_id"},
+    {"from": "cod_transactions", "to": "suppliers", "on": "supplier_id"},
+    {"from": "invoices", "to": "entities", "on": "accounts_entity_id"},
+    {"from": "invoices", "to": "users", "on": "accounts_user_id"},
+    {"from": "ndr", "to": "entities", "on": "accounts_entity_id"},
+    {"from": "ndr", "to": "users", "on": "accounts_user_id"},
+    {"from": "npr", "to": "entities", "on": "accounts_entity_id"},
+    {"from": "npr", "to": "locations", "on": "vamaship_location_id"},
+    {"from": "npr", "to": "suppliers", "on": "partner_id"},
+    {"from": "package_masters", "to": "entities", "on": "accounts_entity_id"},
+    {"from": "package_masters", "to": "users", "on": "accounts_user_id"},
+    {"from": "entity_channel_mappings", "to": "entities", "on": "accounts_entity_id"},
+    {"from": "entity_channel_mappings", "to": "users", "on": "accounts_user_id"},
+    {"from": "channel_webhooks", "to": "entities", "on": "accounts_entity_id"},
+    {"from": "payment_histories", "to": "entities", "on": "accounts_entity_id"},
+    {"from": "weight_disputes", "to": "entities", "on": "accounts_entity_id"},
+    {"from": "ambassador_clients_mappings", "to": "ambassadors", "on": "ambassador_id"},
+    {"from": "ambassador_clients_mappings", "to": "entities", "on": "accounts_entity_id"},
+    {"from": "ambassador_clients_mappings", "to": "users", "on": "accounts_user_id"},
+    {"from": "upsell_products", "to": "entities", "on": "accounts_entity_id"},
+    {"from": "vendors", "to": "entities", "on": "accounts_entity_id"},
+    {"from": "vendors", "to": "users", "on": "user_id"},
+    {"from": "customer_pricing_plans", "to": "pricing_plans", "on": "pricing_plan_id"},
+    {"from": "customer_pricing_plans", "to": "entities", "on": "accounts_entity_id"},
+    {"from": "air_dom_costing", "to": "entities", "on": "accounts_entity_id"},
+    {"from": "air_dom_costing", "to": "suppliers", "on": "supplier_id"},
+    {"from": "surface_b2c_costing", "to": "entities", "on": "accounts_entity_id"},
+    {"from": "surface_b2c_costing", "to": "suppliers", "on": "supplier_id"},
+    {"from": "surface_b2b_rates", "to": "entities", "on": "accounts_entity_id"},
+    {"from": "surface_b2b_rates", "to": "suppliers", "on": "supplier_id"},
+    {"from": "surface_route_to_slab", "to": "entities", "on": "accounts_entity_id"},
+    {"from": "surface_route_to_slab", "to": "suppliers", "on": "supplier_id"},
+    {"from": "surface_b2b_entity_settings", "to": "entities", "on": "accounts_entity_id"},
+    {"from": "surface_b2b_entity_settings", "to": "suppliers", "on": "supplier_id"},
+    {"from": "supplier_preferences", "to": "entities", "on": "accounts_entity_id"},
+    {"from": "supplier_preferences", "to": "suppliers", "on": "supplier_id"},
+    {"from": "advanced_partner_preference_settings", "to": "entities", "on": "accounts_entity_id"},
+    {"from": "air_international_pricing", "to": "entities", "on": "accounts_entity_id"},
+    {"from": "air_international_pricing", "to": "suppliers", "on": "supplier_id"},
+    {"from": "shipment_weight_delinks", "to": "entities", "on": "accounts_entity_id"},
+    {"from": "entity_settings", "to": "entities", "on": "accounts_entity_id"},
+    {"from": "entity_callback_urls", "to": "entities", "on": "accounts_entity_id"},
+    {"from": "customer_api_callback_log", "to": "entities", "on": "accounts_entity_id"},
+    {"from": "partner_tracking_codes", "to": "suppliers", "on": "partner_id"},
+    {"from": "partner_tracking_codes", "to": "vamaship_tracking_codes_master", "on": "vamaship_tracking_code"},
+    {"from": "tracking_status_mappings", "to": "vamaship_tracking_codes_master", "on": "vamaship_tracking_status_code"},
+    {"from": "tracking_status_mappings", "to": "suppliers", "on": "partner_id"},
+    {"from": "shipments", "to": "vamaship_tracking_codes_master", "on": "tracking_status", "to_column": "new_code"},
+    {"from": "shipment_tracking_details", "to": "vamaship_tracking_codes_master", "on": "tracking_status", "to_column": "new_code"},
+    {"from": "shipments", "to": "domestic_pincode_masters", "on": "from_pincode", "to_column": "pincode"},
+    {"from": "shipments", "to": "domestic_pincode_masters", "on": "to_pincode", "to_column": "pincode"},
+    {"from": "orders", "to": "domestic_pincode_masters", "on": "from_pincode", "to_column": "pincode"},
+    {"from": "orders", "to": "domestic_pincode_masters", "on": "to_pincode", "to_column": "pincode"},
+    {"from": "locations", "to": "domestic_pincode_masters", "on": "pincode", "to_column": "pincode"}
+  ],
+  "code_mappings": {
+    "cod_transactions.status": {
+      "description": "COD transaction status codes to semantic labels.",
+      "values": {
+        "0": "Pending",
+        "1": "Receivable",
+        "2": "Receivable",
+        "3": "Received",
+        "4": "Cod Cancelled",
+        "5": "Cod Reversed"
+      }
+    },
+    "vamaship_tracking_codes_master.new_code": {
+      "description": "Master Vamaship tracking codes to human-readable labels. This is the single source of truth for all tracking status codes used across shipments, tracking details, and NDR tables.",
+      "values": {
+        "1000": "Booking Pending",
+        "1010": "Shipment Booked",
+        "1020": "Shipment Manifested",
+        "1025": "Cancel Requested",
+        "1039": "Missed Pickup",
+        "1050": "Pickup Cancelled",
+        "1070": "Pickup Scheduled",
+        "1083": "Pickup Re-scheduled",
+        "1100": "Out for Pickup",
+        "1200": "Picked Up from Origin",
+        "1220": "Shipment In-Transit",
+        "1250": "Shipment Cancelled",
+        "1280": "Received at Origin Hub",
+        "1300": "Shipment On-Hold",
+        "1400": "Received at Destination Hub",
+        "1440": "Shipment Misrouted",
+        "1500": "Shipment Lost",
+        "1550": "Shipment Damaged",
+        "1560": "Unexpected Challenge",
+        "1570": "Address Incorrect",
+        "1616": "Delay in Delivery expected",
+        "1700": "Shipment Out for Delivery",
+        "1770": "Delivery Attempt Failed",
+        "1800": "Partial Delivery",
+        "1850": "Pending",
+        "1880": "Contact Customer Support",
+        "1900": "Delivered",
+        "2000": "RTO Initiated",
+        "2020": "RTO In Transit",
+        "2025": "RTO Exception",
+        "2030": "RTO Delivered",
+        "8000": "Tracking Closed"
+      }
+    }
+  }
+}

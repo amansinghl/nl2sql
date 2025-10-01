@@ -1,0 +1,60 @@
+On‑time delivery rate by supplier for last month.
+Revenue by day for the last 14 days.
+Order count by payment method for this month.
+How many orders did we get today?
+List the last 20 orders.
+What’s our total revenue this week?
+Show all orders from yesterday with their status.
+Which products are out of stock?
+How many active customers do we have?
+List customers created in the last 7 days.
+count active customers.
+recent orders?
+how many shipments we got today?
+Shipment Status & Counts
+How many shipments are pending right now?
+Show me all shipments that are delayed today.
+How many shipments were delivered last week?
+What percentage of shipments are in transit currently?
+Show me shipments stuck with RTO (return to origin).
+How many shipments were sent from Delhi last month?
+Which states had the most failed deliveries this week?
+Show me shipments delivered in Mumbai yesterday.
+How many shipments were booked for shopify this month?
+Which courier had the most delayed shipments last month?
+Compare delivery success rates between BlueDart and Delhivery
+Show me average delivery time by carrier in September.
+How many shipments per carrier are still in transit today?
+Which carrier had the highest RTOs in the last 7 days?
+What was the total shipping cost last month?
+Which shipments had the highest COD amount pending?
+How much revenue was collected via COD last week?
+Show me total refunds issued due to failed deliveries.
+
+
+//improvemnt 1: 
+query templates & smart suggestions to UI as user types: {
+  "query_templates": {
+    "shipment_analytics": [
+      "Show me shipment status distribution for last month",
+      "Find average delivery time by city",
+      "List top 10 customers by shipment volume"
+    ],
+    "financial_reports": [
+      "Show total COD collection by supplier",
+      "Find revenue by payment type",
+      "List pending payments over 30 days"
+    ]
+  }
+}
+
+
+//improvemnt 2: 
+//Data visualization: 
+// Add chart components
+import { BarChart, LineChart, PieChart } from 'recharts'
+
+const ResultsVisualization = ({ data, queryType }) => {
+  // Auto-detect chart type based on data structure
+  // Render appropriate visualization
+}

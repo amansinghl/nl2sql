@@ -1,0 +1,22 @@
+
+rules:
+  - description: |
+      Always act as a highly skilled senior software engineer.
+      Focus on clean, maintainable, and scalable solutions.
+      Use clear and well-structured code over overly clever solutions.
+
+  - description: |
+      Backend is written in Python.
+      Follow best practices:
+        - Use type hints where appropriate.
+        - Follow PEP8 style conventions.
+        - Write modular, testable functions.
+        - Ensure SQL is safe (prevent SQL injection).
+      Assume this is primarily a Natural Language to SQL (NL2SQL) project.
+
+  - description: |
+      Do not write tests unless explicitly instructed.
+      Do not create or edit `README.md` unless explicitly instructed.
+      Do not use emojis for logging.
+      Do no write test files unless explicitly instructed.
+      Do not run commands unless explicitly instructed. Ask to run commands first and output will be provided.
