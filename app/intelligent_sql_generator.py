@@ -882,11 +882,28 @@ class IntelligentSQLGenerator:
                     user_query, scoping_value, current_tables, current_schema_context
                 )
                 
-                # Count query validation - ensure count queries use COUNT(*)
-                if any(word in user_query.lower() for word in ['how many', 'count', 'number of', 'total']):
-                    if not sql.strip().upper().startswith('SELECT COUNT('):
-                        # Try to fix it
+                # Projection intent handling
+                from .projection_advisor import projection_advisor
+                intents = projection_advisor.analyze_intent(user_query)
+                # If user asked for counts, ensure COUNT(*). If user did NOT ask for counts
+                # but the model produced a COUNT(*), rewrite to a detailed SELECT using advisor.
+                sql_stripped_upper = sql.strip().upper()
+                if intents.get('is_count', False):
+                    if not sql_stripped_upper.startswith('SELECT COUNT('):
                         sql = self._fix_count_query(sql, user_query)
+                else:
+                    if sql_stripped_upper.startswith('SELECT COUNT('):
+                        # Rewrite COUNT to a projection suitable for detail/list intents
+                        # Determine main table
+                        import re as _re
+                        from_match = _re.search(r'FROM\s+(\w+)', sql, _re.IGNORECASE)
+                        main_table = from_match.group(1) if from_match else (current_tables[0] if current_tables else None)
+                        if main_table:
+                            table_cols = self.schema_graph.tables.get(main_table, {}).get('columns', [])
+                            suggestions = projection_advisor.suggest_projections(user_query, [main_table], {main_table: []})
+                            proj_cols = suggestions.get(main_table, []) or (table_cols[:6] if table_cols else ['*'])
+                            # Replace SELECT COUNT(*) with SELECT <proj>
+                            sql = _re.sub(r'^\s*SELECT\s+COUNT\s*\(\s*\*\s*\)\s+', f"SELECT {projection_advisor.get_projection_sql(main_table, proj_cols)} ", sql, flags=_re.IGNORECASE)
                 
                 # Enhanced validation with schema accuracy checks
                 validation_result = self._validate_sql_with_schema_accuracy(
@@ -1011,12 +1028,22 @@ class IntelligentSQLGenerator:
             if "'delivered'" in sql_lower.lower():
                 accuracy_issues.append("❌ Use tracking_status = '1900' for 'Delivered', not 'delivered'")
         
-        # Check for common date column mistakes
+        # Check for common date column mistakes (only if truly absent in used tables)
         if re.search(r'\bdelivery_date\b', sql_lower):
-            accuracy_issues.append("❌ Column 'delivery_date' doesn't exist. ✅ Use: shipment_date")
+            has_delivery_date = any(
+                'delivery_date' in (col.lower() for col in self.schema_graph.tables.get(t, {}).get('columns', []))
+                for t in used_tables
+            )
+            if not has_delivery_date:
+                accuracy_issues.append("❌ Column 'delivery_date' doesn't exist. ✅ Use: shipment_date")
         
         if re.search(r'\border_date\b', sql_lower):
-            accuracy_issues.append("❌ Column 'order_date' doesn't exist. ✅ Use: shipment_date or created_at")
+            has_order_date = any(
+                'order_date' in (col.lower() for col in self.schema_graph.tables.get(t, {}).get('columns', []))
+                for t in used_tables
+            )
+            if not has_order_date:
+                accuracy_issues.append("❌ Column 'order_date' doesn't exist. ✅ Use: shipment_date or created_at")
         
         # Check for missing scoping - only for entity scoping column
         if user_context:
