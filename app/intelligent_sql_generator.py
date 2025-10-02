@@ -223,7 +223,8 @@ class IntelligentSQLGenerator:
                     attempts=sql_result.get('attempts', 0),
                     success=bool(sql_result.get('success', False)),
                     sql=sql_result.get('sql', ''),
-                    error=sql_result.get('error')
+                    error=sql_result.get('error'),
+                    error_details=sql_result.get('error_details')
                 )
             except Exception:
                 pass
@@ -241,6 +242,11 @@ class IntelligentSQLGenerator:
                 )
             # Query event logging (failure)
             try:
+                try:
+                    from .error_codes import NL2SQLError  # local import to avoid top-level churn
+                except Exception:
+                    NL2SQLError = tuple()  # type: ignore
+                error_details = getattr(e, 'details', None) if isinstance(e, NL2SQLError) else None
                 query_logger.log_event(
                     user_context,
                     user_query,
@@ -250,7 +256,8 @@ class IntelligentSQLGenerator:
                     attempts=0,
                     success=False,
                     sql='',
-                    error=str(e)
+                    error=str(e),
+                    error_details=error_details
                 )
             except Exception:
                 pass
@@ -984,12 +991,19 @@ class IntelligentSQLGenerator:
             except Exception as e:
                 attempt += 1
                 if attempt >= self.MAX_VALIDATION_ATTEMPTS:
+                    # Capture structured details if available (e.g., NL2SQLError)
+                    try:
+                        from .error_codes import NL2SQLError  # local import
+                    except Exception:
+                        NL2SQLError = tuple()  # type: ignore
+                    error_details = getattr(e, 'details', None) if isinstance(e, NL2SQLError) else None
                     return {
                         "success": False,
                         "sql": "",
                         "tables_used": current_tables,
                         "attempts": attempt,
-                        "error": f"SQL generation failed: {str(e)}"
+                        "error": f"SQL generation failed: {str(e)}",
+                        "error_details": error_details
                     }
         
         # If all attempts fail, return error with context

@@ -149,10 +149,15 @@ class OpenAIProvider(BaseLLMProvider):
             if response.status_code != 200:
                 raise Exception(f"OpenAI API error: {response.status_code} - {response.text}")
             
-            result = response.json()
-            sql = result['choices'][0]['message']['content'].strip()
-            sql = self._clean_sql(sql)
-            return sql
+            try:
+                result = response.json()
+                sql = result['choices'][0]['message']['content'].strip()
+                sql = self._clean_sql(sql)
+                return sql
+            except Exception as parse_err:
+                # Attach a short preview of the raw payload for debugging
+                raw_preview = response.text[:500] if hasattr(response, 'text') else ''
+                raise Exception(f"OpenAI parse error: {parse_err}. Raw preview: {raw_preview}")
         except Exception:
             raise
     
@@ -241,9 +246,13 @@ class OpenAIProvider(BaseLLMProvider):
             )
             if response.status_code != 200:
                 raise Exception(f"OpenAI API error: {response.status_code} - {response.text}")
-            result = response.json()
-            sql = result['choices'][0]['message']['content'].strip()
-            return self._clean_sql(sql)
+            try:
+                result = response.json()
+                sql = result['choices'][0]['message']['content'].strip()
+                return self._clean_sql(sql)
+            except Exception as parse_err:
+                raw_preview = response.text[:500] if hasattr(response, 'text') else ''
+                raise Exception(f"OpenAI parse error (sql_from_plan): {parse_err}. Raw preview: {raw_preview}")
         except Exception:
             raise
 

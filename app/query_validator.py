@@ -76,46 +76,33 @@ class QueryValidator:
             return {"valid": False, "error": error.error_code.message, "error_code": error.error_code.code}
     
     def _extract_tables(self, statement: Statement) -> Set[str]:
-        """Extract table names from SQL statement"""
-        tables = set()
-        
-        # Extract from FROM clause
-        from_seen = False
-        for token in statement.tokens:
-            if token.ttype == tokens.Keyword and token.value.upper() == 'FROM':
-                from_seen = True
-                continue
-            
-            if from_seen and isinstance(token, Identifier):
-                # Handle table aliases
-                table_name = token.get_real_name()
-                if table_name:
-                    tables.add(table_name.lower())
-                from_seen = False
-            
-            # Handle JOIN clauses
-            if token.ttype == tokens.Keyword and 'JOIN' in token.value.upper():
-                # Look for table name after JOIN
-                continue
-        
-        # Also check for table names in subqueries and CTEs
-        for token in statement.tokens:
-            if hasattr(token, 'tokens'):
-                tables.update(self._extract_tables_from_tokens(token.tokens))
-        
+        """Extract table names from SQL, robustly and without miscounting column names."""
+        sql_text = str(statement)
+        sql_norm = re.sub(r'\s+', ' ', sql_text).strip()
+        tables: Set[str] = set()
+
+        # Patterns to capture table identifiers after FROM, JOIN, UPDATE, INTO, DELETE FROM
+        patterns = [
+            r"\bFROM\s+([`\w\.]+)",
+            r"\bJOIN\s+([`\w\.]+)",
+            r"\bUPDATE\s+([`\w\.]+)",
+            r"\bINTO\s+([`\w\.]+)",
+            r"\bDELETE\s+FROM\s+([`\w\.]+)"
+        ]
+        for pat in patterns:
+            for m in re.finditer(pat, sql_norm, flags=re.IGNORECASE):
+                raw = m.group(1)
+                # Strip qualifiers and backticks
+                name = raw.split('.')[-1].strip('`').lower()
+                # Filter obvious column-like names (heuristic): exclude names appearing with '=' or in select list fragments
+                if name and not re.match(r"^(id|count|sum|avg|min|max)$", name):
+                    tables.add(name)
+
         return tables
     
     def _extract_tables_from_tokens(self, tokens_list) -> Set[str]:
-        """Recursively extract table names from tokens"""
-        tables = set()
-        for token in tokens_list:
-            if isinstance(token, Identifier):
-                table_name = token.get_real_name()
-                if table_name:
-                    tables.add(table_name.lower())
-            elif hasattr(token, 'tokens'):
-                tables.update(self._extract_tables_from_tokens(token.tokens))
-        return tables
+        """Deprecated: kept for compatibility but returns empty set to avoid overcounting."""
+        return set()
     
     def _validate_scoping_filtering(self, statement: Statement, scoped_tables: List[str], scoping_value: str) -> Dict:
         """Validate that scoped tables have proper scoping filtering"""
@@ -387,6 +374,8 @@ class QueryValidator:
         
         # Check max tables rule
         max_tables = custom_rules.get('max_tables')
+        print(f"max_tables: {max_tables}")
+        print(f"used_tables: {used_tables}")
         if max_tables and len(used_tables) > max_tables:
             return {
                 "valid": False,

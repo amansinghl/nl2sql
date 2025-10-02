@@ -2,7 +2,7 @@ import json
 import logging
 from logging.handlers import TimedRotatingFileHandler
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 from .config import settings
 
@@ -94,7 +94,8 @@ class QueryLogger:
         attempts: int,
         success: bool,
         sql: str = None,
-        error: str = None
+        error: str = None,
+        error_details: Optional[Dict[str, Any]] = None
     ):
         if not self.enabled:
             return
@@ -112,6 +113,7 @@ class QueryLogger:
                 'success': success,
                 'sql': (sql or '').strip(),
                 'error': error,
+                'error_details': error_details or {},
                 'request_id': getattr(user_context, 'request_id', None)
             }
             self.logger.info(json.dumps(event))
