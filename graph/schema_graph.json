@@ -168,114 +168,70 @@
       ]
     },
     "shipments": {
-      "columns": ["accounts_user_id", "accounts_entity_id", "shipment_no", "email", "supplier_id", "from_pincode", "to_pincode", "shipment_date", "product_code", "cod_value", "total_price", "supplier_cost", "pre_gst_total_price", "pre_gst_total_partner_cost", "product", "product_value", "cancelled_at", "bulk_id", "tracking_id", "rto_tracking_id", "tracking_status", "booking_status", "booking_medium", "is_offline", "invoice_weight", "billable", "partner_bill", "reference1", "reference2", "branch_id", "shipment_input_id", "pickup_location_id", "consignee_location_id", "billing_location_id", "return_location_id", "channel_id", "is_stressed", "created_at", "updated_at", "deleted_at"],
-      "scoped": true,
-      "scoping_column": "accounts_entity_id",
-      "description": "Core shipment records with tracking information, pricing, and logistics details. Central table for shipment lifecycle management.",
-      "examples": [
+    "columns": ["accounts_user_id", "accounts_entity_id", "shipment_no", "email", "supplier_id", "from_pincode", "to_pincode", "shipment_date", "product_code", "cod_value", "total_price", "supplier_cost", "pre_gst_total_price", "pre_gst_total_partner_cost", "product", "product_value", "cancelled_at", "bulk_id", "tracking_id", "rto_tracking_id", "tracking_status", "booking_status", "booking_medium", "is_offline", "invoice_weight", "billable", "partner_bill", "reference1", "reference2", "branch_id", "shipment_input_id", "pickup_location_id", "consignee_location_id", "billing_location_id", "return_location_id", "channel_id", "is_stressed", "created_at", "updated_at", "deleted_at"],
+    "scoped": true,
+    "scoping_column": "accounts_entity_id",
+    "description": "Core shipment records with tracking information, pricing, and logistics details. Central table for shipment lifecycle management.",
+    "examples": [
         {
-          "query": "Show me all shipments",
-          "sql": "SELECT * FROM shipments"
+          "query": "shipment details",
+          "sql": "SELECT s.shipment_no, s.tracking_id, s.rto_tracking_id, s.supplier_id, sup.name as supplier_name, s.booking_status, s.tracking_status, s.booking_medium, s.bulk_id, s.reference1, s.product_code, s.cancelled_at, s.created_at as shipment_date, s.from_pincode, s.to_pincode, s.cod_value, s.channel_id, si.mode_transport, si.shipment_type, si.service_type, si.lr_num, milestones.rto_delivered_date, milestones.rto_initiated_date, milestones.delivered_date, org.full_name as seller_name, org.contact as seller_contact, org.city as origin_city, org.state as origin_state, dest.full_name as consignee_name, dest.contact as consignee_contact, dest.city as destination_city, dest.state as destination_state, dest.pincode as destination_pincode, sup.name as partner_name, sup.logo as partner_logo, cm.channel_name, si.acknowledge, (SELECT status FROM orders WHERE s.shipment_no = orders.shipment_no) as status, (SELECT GROUP_CONCAT(child_awb_number) FROM child_awb_numbers ca WHERE s.shipment_no = ca.shipment_no) as child_awb_number, (SELECT user_reason FROM shipment_cancellation_requests scr WHERE s.shipment_no = scr.shipment_no ORDER BY scr.created_at DESC LIMIT 1) as user_reason, (SELECT tracking_category FROM vamaship_tracking_codes_master vtcm WHERE s.tracking_status = vtcm.new_code LIMIT 1) as tracking_category, (SELECT IF(s.tracking_status = 1880, (SELECT std.partner_comment FROM shipment_tracking_details std WHERE std.shipment_no = s.shipment_no AND std.tracking_status = s.tracking_status ORDER BY tracking_event_date_time LIMIT 1), vtcm.status_message) FROM vamaship_tracking_codes_master vtcm WHERE s.tracking_status = vtcm.new_code LIMIT 1) as tracking_status_message, milestones.partner_last_update as partner_last_update, milestones.estimated_delivery_date as estimated_delivery_date, (SELECT SUM(debit_amount) - SUM(credit_amount) FROM transactions WHERE transactions.shipment_no = s.shipment_no) as debit_credit_difference FROM shipments s LEFT JOIN shipment_addresses dest ON s.shipment_no = dest.shipment_no AND dest.type = 'consignee' LEFT JOIN shipment_addresses org ON s.shipment_no = org.shipment_no AND org.type = 'pickup' LEFT JOIN shipment_inputs si ON si.shipment_no = s.shipment_no LEFT JOIN shipment_milestone_dates milestones ON milestones.shipment_no = s.shipment_no LEFT JOIN suppliers sup ON sup.id = s.supplier_id LEFT JOIN channel_masters cm ON cm.channel_code = s.channel_id WHERE s.accounts_entity_id = '123'"
         },
         {
-          "query": "track shipment by shipment no",
-          "sql": "SELECT * FROM shipments WHERE shipment_no = '123'"
+          "query": "shipment details with weights, addresses, and cost breakdown",
+          "sql": "SELECT s.shipment_no, s.tracking_id, s.bulk_id, s.rto_tracking_id, sup.name as supplier_name, IF(s.cod_value > 0, 'COD', 'PREPAID') as shipment_payment_mode, s.cod_value, s.accounts_user_id, s.accounts_entity_id, CONCAT(si.shipment_type, '-', si.mode_transport, '-', si.service_type) as shipment_type, CONCAT(vtcm.status_message, ' (', s.tracking_status, ')') as status, s.from_pincode, s.to_pincode, s.product_code, s.total_price, s.product, s.shipment_zone, (SELECT shipment_weight FROM shipment_weight_histories as swh WHERE swh.shipment_no = s.shipment_no and weight_category = 'Entered Weight' limit 1) as entered_weight, (SELECT shipment_weight FROM shipment_weight_histories as swh WHERE swh.shipment_no = s.shipment_no and weight_category = 'Entered Volumetric Weight' limit 1) as entered_volumetric_weight, (SELECT shipment_weight FROM shipment_weight_histories as swh WHERE swh.shipment_no = s.shipment_no and weight_category = 'Booked Weight' limit 1) as booked_weight, pickup.full_name as shipper_name, pickup.email as shipper_email, pickup.contact as shipper_contact, CONCAT(pickup.address_line_1, ',', IFNULL(pickup.address_line_2, ''), ',', IFNULL(pickup.address_line_3, ''), ',', pickup.pincode, ',', pickup.city, ',', pickup.state) as shipper_address, consignee.full_name as consignee_name, consignee.email as consignee_email, consignee.contact as consignee_contact, CONCAT(consignee.address_line_1, ',', IFNULL(consignee.address_line_2, ''), ',', IFNULL(consignee.address_line_3, ''), ',', consignee.pincode, ',', consignee.city, ',', consignee.state) as consignee_address FROM shipments s LEFT JOIN suppliers ON suppliers.id = s.supplier_id LEFT JOIN shipment_inputs as si ON si.shipment_no = s.shipment_no LEFT JOIN vamaship_tracking_codes_master as vtcm ON vtcm.new_code = s.tracking_status LEFT JOIN shipment_milestone_dates as milestones ON milestones.shipment_no = s.shipment_no LEFT JOIN shipment_addresses as pickup ON s.shipment_no = pickup.shipment_no AND pickup.type = 'pickup' LEFT JOIN shipment_addresses as consignee ON s.shipment_no = consignee.shipment_no AND consignee.type = 'consignee' WHERE s.accounts_entity_id = '123'"
         },
         {
-          "query": "Show me all prepaid shipments today",
-          "sql": "SELECT * FROM shipments WHERE cod_value = 0 AND shipment_date = CURDATE()"
+          "query": "Shipment with package details and weight history",
+          "sql": "SELECT s.product as product_description, s.product_value as product_value, sp.weight as weight, sp.weight_unit as weight_unit, sp.package_count as package_count, sp.length, sp.width, sp.height, sp.unit as dimensions_unit, (SELECT shipment_weight FROM shipment_weight_histories WHERE weight_category = 'Entered Weight' and shipment_weight_histories.shipment_no = s.shipment_no limit 1) as entered_weight, (SELECT shipment_weight FROM shipment_weight_histories WHERE weight_category = 'Entered Volumetric Weight' and shipment_weight_histories.shipment_no = s.shipment_no limit 1) as volumetric_weight, (SELECT shipment_weight FROM shipment_weight_histories WHERE weight_category = 'Booked Weight' and shipment_weight_histories.shipment_no = s.shipment_no limit 1) as booked_weight FROM shipments s LEFT JOIN shipment_packages sp ON sp.shipment_input_id = s.shipment_input_id WHERE s.accounts_entity_id = '123'"
         },
         {
-          "query": "Show me all COD shipments today",
-          "sql": "SELECT * FROM shipments WHERE cod_value > 0 AND shipment_date = CURDATE()"
+          "query": "Shipment cost breakdown with entity and WhatsApp charges",
+          "sql": "SELECT scb.amount as total_without_tax, scb.total_amount, scb.cgst, scb.igst, scb.sgst, scb.gst, scb.total_gst, scb.charge_head, scb.created_at, e.is_whatsapp_tracking_enabled, e.whatsapp_tracking_charges, CASE WHEN e.is_whatsapp_tracking_enabled = 1 AND e.whatsapp_tracking_charges > 0 THEN 1 ELSE 0 END as whatsapp_charges FROM shipment_cost_breakups scb JOIN shipments s ON scb.shipment_no = s.shipment_no JOIN entities e ON s.accounts_entity_id = e.accounts_entity_id WHERE s.accounts_entity_id = '123'"
         },
         {
-          "query": "Show me all shipments by supplier name",
-          "sql": "SELECT s.name AS supplier_name, COUNT(s.shipment_no) AS shipment_count FROM shipments sh JOIN suppliers s ON sh.supplier_id = s.id GROUP BY s.name"
+          "query": "Shipment with line items and product details",
+          "sql": "SELECT s.shipment_no, sli.product_name, sli.quantity, sli.weight, sli.weight_unit, sli.product_value as product_value_with_tax, IF(p.currency IS NOT NULL, p.currency, 'INR') as product_value_currency, IF(p.hsn_code IS NOT NULL, p.hsn_code, '') as hsn_code, sli.id as line_item_id FROM shipments s LEFT JOIN shipment_line_items sli ON s.shipment_no = sli.shipment_no LEFT JOIN products p ON p.id = sli.product_id WHERE s.accounts_entity_id = '123'"
         },
         {
-          "query": "Delivered shipments today",
-          "sql": "SELECT * FROM shipments WHERE tracking_status = '1900' AND DATE(updated_at) = CURDATE()"
+          "query": "Shipment with WhatsApp logs and communication history",
+          "sql": "SELECT s.shipment_no, wl.message_id, wl.customer_phone, wl.message, wl.replied_on, wl.reply_text, wl.response, wl.event_type, IF(wl.api_user_id = 1, 1, 0) as cost, wl.created_at FROM shipments s LEFT JOIN whatsapp_logs as wl ON s.shipment_no = wl.shipment_no WHERE s.accounts_entity_id = '123' AND wl.shipment_no IS NOT NULL ORDER BY wl.created_at"
         },
         {
-          "query": "Shipments in transit by supplier",
-          "sql": "SELECT s.supplier_id, COUNT(*) AS in_transit FROM shipments s WHERE s.tracking_status IN ('1220','1400','1700') GROUP BY s.supplier_id"
+          "query": "Shipment transactions and payment history",
+          "sql": "SELECT s.shipment_no, t.payment_type, t.transaction_amount, t.remark, t.created_at, (SELECT SUM(debit_amount) - SUM(credit_amount) FROM transactions WHERE transactions.shipment_no = s.shipment_no) as debit_credit_difference FROM shipments s LEFT JOIN transactions t ON s.shipment_no = t.shipment_no WHERE s.accounts_entity_id = '123' ORDER BY t.created_at DESC"
         },
         {
-          "query": "Shipments details for 123",
-          "sql": "SELECT * FROM shipments WHERE shipments_no = '123'"
+          "query": "Shipments awaiting pickup with detailed information",
+          "sql": "SELECT s.shipment_no, s.tracking_status, s.tracking_id, s.shipment_date, s.reference1, s.supplier_id, tcm.status_message, std.partner_comment, org.city as origin_city, dest.city as destination_city, pickup_id, s.pickup_location_id AS location_id, org.address_line_1 AS address, (SELECT count(1) FROM shipment_tracking_details WHERE s.shipment_no = shipment_tracking_details.shipment_no and tracking_status = 1100) as pickup_attempts FROM shipments s LEFT JOIN shipment_tracking_details as std ON s.shipment_no = std.shipment_no AND s.tracking_status = std.tracking_status LEFT JOIN vamaship_tracking_codes_master as tcm ON tcm.new_code = s.tracking_status LEFT JOIN locations as org ON s.pickup_location_id = org.id LEFT JOIN locations as dest ON s.consignee_location_id = dest.id LEFT JOIN pickup_ids ON s.accounts_entity_id = pickup_ids.accounts_entity_id AND s.pickup_location_id = pickup_ids.location_id AND s.supplier_id = pickup_ids.supplier_id AND pickup_ids.pickup_id_date >= CURDATE() WHERE s.tracking_status < 1200 AND s.tracking_status NOT IN (1050, 1025) AND s.created_at >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH) AND s.cancelled_at IS NULL AND s.booking_status = 1 AND s.accounts_entity_id = '123' GROUP BY s.shipment_no"
         },
         {
-          "query": "How many shipments we got today?",
-          "sql": "SELECT COUNT(*) FROM shipments WHERE DATE(shipment_date) = CURDATE() AND accounts_entity_id = '123'"
+          "query": "Mid-mile shipments with tracking and delays",
+          "sql": "SELECT s.shipment_no as shipment_no, s.created_at as created_at, s.tracking_id, s.shipment_zone, sup.name as supplier_name, s.product, milestones.pickup_date, milestones.estimated_delivery_date, (SELECT DATEDIFF(CURDATE(), DATE(s.created_at))) as journey_days, CASE WHEN milestones.estimated_delivery_date IS NOT NULL THEN DATEDIFF(NOW(), milestones.estimated_delivery_date) ELSE '' END AS delay_days, vtcm.status_message, (SELECT partner_comment FROM shipment_tracking_details as std WHERE std.shipment_no = s.shipment_no AND std.deleted_at IS NULL AND s.tracking_status = std.tracking_status ORDER BY std.tracking_event_date_time DESC LIMIT 1) as partner_comment FROM shipments s LEFT JOIN shipment_milestone_dates milestones ON milestones.shipment_no = s.shipment_no LEFT JOIN suppliers sup ON sup.id = s.supplier_id LEFT JOIN vamaship_tracking_codes_master vtcm ON vtcm.new_code = s.tracking_status WHERE s.tracking_status >= 1200 AND s.tracking_status NOT IN (1250, 1500, 1550, 1570, 1770, 1800, 2030, 2000, 2020, 2025, 1900) AND milestones.estimated_delivery_date <= CURDATE() AND milestones.pickup_date >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH) AND s.accounts_entity_id = '123' GROUP BY s.shipment_no"
         },
         {
-          "query": "revenue",
-          "sql": "SELECT SUM(total_price) FROM shipments WHERE accounts_entity_id = '123'"
+          "query": "Gross margin analysis with all cost components",
+          "sql": "SELECT s.shipment_no, SUM(scb.total_amount) as shipment_total, SUM(ish.invoiced_amount) as invoiced_total, SUM(si.invoice_amount) as supplier_total, (SUM(scb.total_amount) - SUM(si.invoice_amount)) as gross_margin, (SUM(scb.total_amount) - SUM(si.invoice_amount)) / SUM(scb.total_amount) * 100 as margin_percentage FROM shipments s LEFT JOIN shipment_cost_breakups scb ON s.shipment_no = scb.shipment_no LEFT JOIN invoiced_shipments ish ON s.shipment_no = ish.shipment_no LEFT JOIN supplier_invoices si ON s.shipment_no = si.shipment_no WHERE s.accounts_entity_id = '123' GROUP BY s.shipment_no"
         },
         {
-          "query": "Shipments in transit",
-          "sql": "SELECT * FROM shipments WHERE tracking_status IN ('1220', '1400', '1700') AND accounts_entity_id = '123'"
+          "query": "Shipment with pickup IDs and tracking history",
+          "sql": "SELECT s.shipment_no, pi.pickup_id, pi.pickup_id_date, pi.created_at as pickup_created_at, std.tracking_status, std.created_at FROM shipments s LEFT JOIN shipment_tracking_details as std ON s.shipment_no = std.shipment_no AND std.tracking_status <= 1200 LEFT JOIN pickup_ids as pi ON pi.location_id = s.pickup_location_id AND pi.supplier_id = s.supplier_id WHERE s.shipment_no = 'SH123' AND DATE(pi.created_at) >= DATE(s.created_at) AND pi.created_at <= DATE_ADD(s.created_at, INTERVAL 8 DAY) ORDER BY pi.created_at"
         },
         {
-          "query": "Average shipment value",
-          "sql": "SELECT AVG(total_price) FROM shipments WHERE accounts_entity_id = '123'"
+          "query": "shipment tracking",
+          "sql": "SELECT * FROM shipments WHERE shipment_no = 'SH123' AND accounts_entity_id = '123'"
         },
         {
-          "query": "Shipments with customer names",
-          "sql": "SELECT sh.*, CONCAT(u.first_name, ' ', u.last_name) AS customer_name FROM shipments sh JOIN users u ON sh.accounts_user_id = u.accounts_user_id WHERE sh.accounts_entity_id = '123'"
+          "query": "Prepaid vs COD shipments today",
+          "sql": "SELECT IF(cod_value = 0, 'PREPAID', 'COD') as payment_type, COUNT(*) as count FROM shipments WHERE DATE(shipment_date) = CURDATE() AND accounts_entity_id = '123' GROUP BY payment_type"
         },
         {
-          "query": "Shipments last 30 days",
-          "sql": "SELECT * FROM shipments WHERE shipment_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND accounts_entity_id = '123'"
+          "query": "Shipments by supplier performance",
+          "sql": "SELECT sup.name AS supplier_name, COUNT(s.shipment_no) AS total_shipments, SUM(s.total_price) AS total_revenue, AVG(s.total_price) AS avg_shipment_value, COUNT(CASE WHEN s.tracking_status = 1900 THEN 1 END) AS delivered_count, ROUND(COUNT(CASE WHEN s.tracking_status = 1900 THEN 1 END) / COUNT(s.shipment_no) * 100, 2) AS delivery_rate FROM shipments s JOIN suppliers sup ON s.supplier_id = sup.id WHERE s.accounts_entity_id = '123' GROUP BY sup.name ORDER BY total_shipments DESC"
         },
         {
-          "query": "Order status for each shipment",
-          "sql": "SELECT s.shipment_no, (SELECT o.status FROM orders o WHERE o.shipment_no = s.shipment_no) AS order_status FROM shipments s"
-        },
-        {
-          "query": "Child AWB numbers with shipments",
-          "sql": "SELECT s.shipment_no, (SELECT GROUP_CONCAT(ca.child_awb_number) FROM child_awb_numbers ca WHERE ca.shipment_no = s.shipment_no) AS child_awbs FROM shipments s"
-        },
-        {
-          "query": "Tracking status message (special 1880 rule)",
-          "sql": "SELECT s.shipment_no, (SELECT IF(s.tracking_status = 1880, (SELECT std.partner_comment FROM shipment_tracking_details std WHERE std.shipment_no = s.shipment_no AND std.tracking_status = s.tracking_status ORDER BY tracking_event_date_time LIMIT 1), vtcm.status_message) FROM vamaship_tracking_codes_master vtcm WHERE s.tracking_status = vtcm.new_code LIMIT 1) AS tracking_status_message FROM shipments s"
-        },
-        {
-          "query": "Debit-credit difference by shipment",
-          "sql": "SELECT s.shipment_no, (SELECT SUM(debit_amount) - SUM(credit_amount) FROM transactions t WHERE t.shipment_no = s.shipment_no) AS debit_credit_difference FROM shipments s"
-        },
-        {
-          "query": "Shipments with channel names",
-          "sql": "SELECT s.shipment_no, cm.channel_name FROM shipments s LEFT JOIN channel_masters cm ON cm.channel_code = s.channel_id"
-        },
-        {
-          "query": "Complete shipment details with addresses and tracking",
-          "sql": "SELECT s.shipment_no, s.tracking_id, s.rto_tracking_id, s.supplier_id, s.booking_status, s.tracking_status, s.booking_medium, s.bulk_id, s.reference1, s.product_code, s.cancelled_at, s.created_at AS shipment_date, s.from_pincode, s.to_pincode, s.cod_value, s.channel_id, si.mode_transport, si.shipment_type, si.service_type, si.lr_num, milestones.rto_delivered_date, milestones.rto_initiated_date, milestones.delivered_date, org.full_name AS seller_name, org.contact AS seller_contact, org.city AS origin_city, org.state AS origin_state, dest.full_name AS consignee_name, dest.contact AS consignee_contact, dest.city AS destination_city, dest.state AS destination_state, dest.pincode AS destination_pincode, sup.name AS partner_name, sup.logo AS partner_logo, cm.channel_name, si.acknowledge, (SELECT status FROM orders WHERE s.shipment_no = orders.shipment_no) AS status, (SELECT GROUP_CONCAT(child_awb_number) FROM child_awb_numbers ca WHERE s.shipment_no = ca.shipment_no) AS child_awb_number, (SELECT user_reason FROM shipment_cancellation_requests scr WHERE s.shipment_no = scr.shipment_no ORDER BY scr.created_at DESC LIMIT 1) AS user_reason, (SELECT tracking_category FROM vamaship_tracking_codes_master vtcm WHERE s.tracking_status = vtcm.new_code LIMIT 1) AS tracking_category, (SELECT IF(s.tracking_status = 1880, (SELECT std.partner_comment FROM shipment_tracking_details std WHERE std.shipment_no = s.shipment_no AND std.tracking_status = s.tracking_status ORDER BY tracking_event_date_time LIMIT 1), vtcm.status_message) FROM vamaship_tracking_codes_master vtcm WHERE s.tracking_status = vtcm.new_code LIMIT 1) AS tracking_status_message, milestones.partner_last_update AS partner_last_update, milestones.estimated_delivery_date AS estimated_delivery_date, (SELECT SUM(debit_amount) - SUM(credit_amount) FROM transactions WHERE transactions.shipment_no = s.shipment_no) AS debit_credit_difference FROM shipments s LEFT JOIN shipment_addresses dest ON s.shipment_no = dest.shipment_no AND dest.type = 'consignee' LEFT JOIN shipment_addresses org ON s.shipment_no = org.shipment_no AND org.type = 'pickup' LEFT JOIN shipment_inputs si ON si.shipment_no = s.shipment_no LEFT JOIN shipment_milestone_dates milestones ON milestones.shipment_no = s.shipment_no LEFT JOIN suppliers sup ON sup.id = s.supplier_id LEFT JOIN channel_masters cm ON cm.channel_code = s.channel_id"
-        },
-        {
-          "query": "Shipments awaiting pickup",
-          "sql": "SELECT s.shipment_no, s.tracking_status, s.tracking_id, s.shipment_date, s.reference1, s.supplier_id, tcm.status_message, std.partner_comment, org.city as origin_city, dest.city as destination_city, pickup_id, s.pickup_location_id AS location_id, org.address_line_1 AS address, (SELECT count(1) FROM shipment_tracking_details WHERE s.shipment_no = shipment_tracking_details.shipment_no and tracking_status = 1100) as pickup_attempts FROM shipments s LEFT JOIN shipment_tracking_details as std ON s.shipment_no = std.shipment_no AND s.tracking_status = std.tracking_status LEFT JOIN vamaship_tracking_codes_master as tcm ON tcm.new_code = s.tracking_status LEFT JOIN locations as org ON s.pickup_location_id = org.id LEFT JOIN locations as dest ON s.consignee_location_id = dest.id LEFT JOIN pickup_ids ON s.accounts_entity_id = pickup_ids.accounts_entity_id AND s.pickup_location_id = pickup_ids.location_id AND s.supplier_id = pickup_ids.supplier_id AND pickup_ids.pickup_id_date >= CURDATE() WHERE s.tracking_status < 1200 AND s.tracking_status NOT IN (1050, 1025) AND s.created_at >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH) AND s.cancelled_at IS NULL AND s.booking_status = 1 GROUP BY s.shipment_no"
-        },
-        {
-          "query": "Detailed shipment information with weights and addresses",
-          "sql": "SELECT s.shipment_no, s.tracking_id, s.bulk_id, s.rto_tracking_id, sup.name as supplier_name, IF(s.cod_value > 0, 'COD', 'PREPAID') as shipment_payment_mode, s.cod_value, s.accounts_user_id, s.accounts_entity_id, CONCAT(si.shipment_type, '-', si.mode_transport, '-', si.service_type) as shipment_type, CONCAT(vtcm.status_message, ' (', s.tracking_status, ')') as status, s.from_pincode, s.to_pincode, s.product_code, s.total_price, s.product, s.shipment_zone, (SELECT shipment_weight FROM shipment_weight_histories as swh WHERE swh.shipment_no = s.shipment_no and weight_category = 'Entered Weight' limit 1) as entered_weight, (SELECT shipment_weight FROM shipment_weight_histories as swh WHERE swh.shipment_no = s.shipment_no and weight_category = 'Entered Volumetric Weight' limit 1) as entered_volumetric_weight, (SELECT shipment_weight FROM shipment_weight_histories as swh WHERE swh.shipment_no = s.shipment_no and weight_category = 'Booked Weight' limit 1) as booked_weight, pickup.full_name as shipper_name, pickup.email as shipper_email, pickup.contact as shipper_contact, CONCAT(pickup.address_line_1, ',', IFNULL(pickup.address_line_2, ''), ',', IFNULL(pickup.address_line_3, ''), ',', pickup.pincode, ',', pickup.city, ',', pickup.state) as shipper_address, consignee.full_name as consignee_name, consignee.email as consignee_email, consignee.contact as consignee_contact, CONCAT(consignee.address_line_1, ',', IFNULL(consignee.address_line_2, ''), ',', IFNULL(consignee.address_line_3, ''), ',', consignee.pincode, ',', consignee.city, ',', consignee.state) as consignee_address FROM shipments s LEFT JOIN suppliers ON suppliers.id = s.supplier_id LEFT JOIN shipment_inputs as si ON si.shipment_no = s.shipment_no LEFT JOIN vamaship_tracking_codes_master as vtcm ON vtcm.new_code = s.tracking_status LEFT JOIN shipment_milestone_dates as milestones ON milestones.shipment_no = s.shipment_no LEFT JOIN shipment_addresses as pickup ON s.shipment_no = pickup.shipment_no AND pickup.type = 'pickup' LEFT JOIN shipment_addresses as consignee ON s.shipment_no = consignee.shipment_no AND consignee.type = 'consignee'"
-        },
-        {
-          "query": "Package details with weight history",
-          "sql": "SELECT s.product as product_description, s.product_value as product_value, sp.weight as weight, sp.weight_unit as weight_unit, sp.package_count as package_count, sp.length, sp.width, sp.height, sp.unit as dimensions_unit, (SELECT shipment_weight FROM shipment_weight_histories WHERE weight_category = 'Entered Weight' and shipment_weight_histories.shipment_no = s.shipment_no limit 1) as entered_weight, (SELECT shipment_weight FROM shipment_weight_histories WHERE weight_category = 'Entered Volumetric Weight' and shipment_weight_histories.shipment_no = s.shipment_no limit 1) as volumetric_weight, (SELECT shipment_weight FROM shipment_weight_histories WHERE weight_category = 'Booked Weight' and shipment_weight_histories.shipment_no = s.shipment_no limit 1) as booked_weight FROM shipments s LEFT JOIN shipment_packages sp ON sp.shipment_input_id = s.shipment_input_id"
-        },
-        {
-          "query": "Shipment cost breakdown with entity info",
-          "sql": "SELECT scb.amount as total_without_tax, scb.total_amount, scb.cgst, scb.igst, scb.sgst, scb.gst, scb.total_gst, scb.charge_head, scb.created_at, e.is_whatsapp_tracking_enabled, e.whatsapp_tracking_charges FROM shipment_cost_breakups scb JOIN shipments s ON scb.shipment_no = s.shipment_no JOIN entities e ON s.accounts_entity_id = e.accounts_entity_id WHERE scb.shipment_no = 'SH123'"
-        },
-        {
-          "query": "WhatsApp logs for shipment",
-          "sql": "SELECT s.shipment_no, wl.message_id, wl.customer_phone, wl.message, wl.replied_on, wl.reply_text, wl.response, wl.event_type, IF(wl.api_user_id = 1, 1, 0) as cost, wl.created_at FROM shipments s LEFT JOIN whatsapp_logs as wl ON s.shipment_no = wl.shipment_no WHERE s.shipment_no = 'SH123' AND wl.shipment_no IS NOT NULL ORDER BY wl.created_at"
-        },
-        {
-          "query": "Shipment transactions",
-          "sql": "SELECT payment_type, transaction_amount, remark, created_at FROM transactions WHERE shipment_no = 'SH123' ORDER BY created_at DESC"
+          "query": "Revenue and shipment count by date range",
+          "sql": "SELECT DATE(shipment_date) as date, COUNT(*) as shipment_count, SUM(total_price) as daily_revenue, AVG(total_price) as avg_shipment_value FROM shipments WHERE shipment_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND accounts_entity_id = '123' GROUP BY DATE(shipment_date) ORDER BY date DESC"
         }
       ]
     },
@@ -379,7 +335,7 @@
       ]
     },
     "shipment_milestone_dates": {
-      "columns": ["id", "shipment_no", "partner_last_update", "estimated_delivery_date", "rto_delivered_date", "rto_initiated_date", "delivered_date", "created_at", "updated_at"],
+      "columns": ["id", "shipment_no", "tracking_id", "rto_tracking_id", "booking_date", "pickup_requested_date", "pickup_date", "pickup_cancellation_date", "dispatch_date", "estimated_delivery_date", "rto_estimated_delivery_date", "delivered_date", "rto_initiated_date", "rto_delivered_date", "shipment_closed_date", "partner_last_update", "created_at", "updated_at"],
       "scoped": false,
       "description": "Computed/logged milestone timestamps per shipment for status auditing and ETA calculations.",
       "examples": [
@@ -496,7 +452,7 @@
       ]
     },
     "cod_transactions": {
-      "columns": ["id", "cod_ref_no", "order_no", "awb_no", "shipment_date", "cod_amount", "supplier_id", "status", "old_status", "delivered_date", "cod_collection_ref_no", "cod_collected", "cod_collection_pending", "cod_collection_date", "payment_mode", "payment_ref_no", "paid_amount", "pending_amount", "payment_date", "created_at", "updated_at", "deleted_at", "accounts_entity_id", "accounts_user_id"],
+      "columns": ["id","accounts_entity_id", "accounts_user_id", "cod_ref_no", "shipment_no", "awb_no", "shipment_date", "cod_amount", "supplier_id", "status", "old_status", "delivered_date", "cod_collection_ref_no", "cod_collected", "cod_collection_pending", "cod_collection_date", "payment_mode", "payment_ref_no", "paid_amount", "pending_amount", "payment_date", "created_at", "updated_at", "deleted_at"],
       "scoped": true,
       "scoping_column": "accounts_entity_id",
       "description": "Cash on Delivery transaction tracking including collection status, payment processing, and reconciliation.",
@@ -604,7 +560,7 @@
       ]
     },
     "products": {
-      "columns": ["id", "product_name", "user_id", "l", "b", "h", "unit_id", "w", "package_type", "product_value", "extra", "created_at", "updated_at"],
+      "columns": ["id", "accounts_entity_id", "channel_mapping_id", "channel_product_id", "channel_variant_id", "channel_id", "channel_name", "product_name", "brand", "product_type", "price", "currency", "sku", "hsn_code", "weight", "weight_unit", "weight_in_kgs", "inventory_quantity", "length", "breadth", "height", "unit", "product_meta", "product_images", "created_at", "updated_at", "deleted_at"],
       "scoped": false,
       "description": "Product catalog with dimensions, weight, and packaging information for shipping calculations.",
       "examples": [
@@ -881,11 +837,13 @@
     }
   },
   "relationships": [
-    {"from": "entity_user_mappings", "to": "entities", "on": "accounts_entity_id"},
-    {"from": "entity_user_mappings", "to": "users", "on": "accounts_user_id"},
-    {"from": "locations", "to": "entities", "on": "accounts_entity_id"},
-    {"from": "orders", "to": "entities", "on": "accounts_entity_id"},
-    {"from": "orders", "to": "users", "on": "accounts_user_id"},
+    {"from": "entity_user_mappings", "to": "entities", "on": "accounts_entity_id", "to_column": "accounts_entity_id"},
+    {"from": "entity_user_mappings", "to": "entities", "on": "accounts_user_id", "to_column": "accounts_user_id"},
+    {"from": "entity_user_mappings", "to": "users", "on": "accounts_user_id", "to_column": "accounts_user_id"},
+    {"from": "entity_user_mappings", "to": "users", "on": "accounts_entity_id", "to_column": "accounts_entity_id"},
+    {"from": "locations", "to": "entities", "on": "accounts_entity_id", "to_column": "accounts_entity_id"},
+    {"from": "orders", "to": "entities", "on": "accounts_entity_id", "to_column": "accounts_entity_id"},
+    {"from": "orders", "to": "users", "on": "accounts_user_id", "to_column": "accounts_user_id"},
     {"from": "orders", "to": "locations", "on": "pickup_location_id"},
     {"from": "orders", "to": "locations", "on": "consignee_location_id"},
     {"from": "orders", "to": "locations", "on": "billing_location_id"},
@@ -903,6 +861,7 @@
     {"from": "shipment_tracking_details", "to": "suppliers", "on": "supplier_id"},
     {"from": "shipment_line_items", "to": "shipments", "on": "shipment_no", "to_column": "shipment_no"},
     {"from": "shipment_line_items", "to": "orders", "on": "order_id"},
+    {"from": "shipment_line_items", "to": "products", "on": "product_id", "to_column": "id"},
     {"from": "shipment_packages", "to": "shipments", "on": "shipment_no", "to_column": "shipment_no"},
     {"from": "shipments", "to": "shipment_addresses", "on": "shipment_no", "to_column": "shipment_no"},
     {"from": "shipments", "to": "shipment_inputs", "on": "shipment_no", "to_column": "shipment_no"},
@@ -914,9 +873,10 @@
     {"from": "transactions", "to": "entities", "on": "accounts_entity_id"},
     {"from": "transactions", "to": "users", "on": "accounts_user_id"},
     {"from": "transactions", "to": "orders", "on": "order_id"},
-    {"from": "cod_transactions", "to": "entities", "on": "accounts_entity_id"},
-    {"from": "cod_transactions", "to": "users", "on": "accounts_user_id"},
-    {"from": "cod_transactions", "to": "suppliers", "on": "supplier_id"},
+    {"from": "cod_transactions", "to": "entities", "on": "accounts_entity_id", "to_column": "accounts_entity_id"},
+    {"from": "cod_transactions", "to": "users", "on": "accounts_user_id", "to_column": "accounts_user_id"},
+    {"from": "cod_transactions", "to": "suppliers", "on": "supplier_id", "to_column": "id"},
+    {"from": "cod_transactions", "to": "shipments", "on": "shipment_no", "to_column": "shipment_no"},
     {"from": "invoices", "to": "entities", "on": "accounts_entity_id"},
     {"from": "invoices", "to": "users", "on": "accounts_user_id"},
     {"from": "ndr", "to": "entities", "on": "accounts_entity_id"},
@@ -1017,6 +977,15 @@
         "2025": "RTO Exception",
         "2030": "RTO Delivered",
         "8000": "Tracking Closed"
+      }
+    },
+    "shipment_addresses.type": {
+      "description": "Shipment address types to human-readable labels.",
+      "values": {
+        "1": "Pickup Location",
+        "2": "Consignee Location",
+        "3": "Billing Location",
+        "4": "Return Location"
       }
     }
   }
