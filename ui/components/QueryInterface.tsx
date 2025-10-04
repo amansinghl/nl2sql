@@ -267,8 +267,6 @@ export function QueryInterface() {
                   <div className={`px-3 py-1 rounded-full text-sm font-bold ${
                     selectedRole === 'customer' 
                       ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
-                      : selectedRole === 'employee'
-                      ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
                       : 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300'
                   }`}>
                     {selectedRole.charAt(0).toUpperCase() + selectedRole.slice(1)}
@@ -312,8 +310,6 @@ export function QueryInterface() {
                   placeholder={
                     selectedRole === 'customer' 
                       ? "e.g., Show me all shipments from last month for my company"
-                      : selectedRole === 'employee'
-                      ? "e.g., Show me all shipments across all entities from last month"
                       : "e.g., Show me all data across all entities and tables"
                   }
                 />
@@ -337,8 +333,6 @@ export function QueryInterface() {
                   <span>
                     {selectedRole === 'customer' 
                       ? "As a customer, your queries will be automatically scoped to your specific entity for data security."
-                      : selectedRole === 'employee'
-                      ? "As an employee, you can query all entities or specify particular entities in the advanced options."
                       : "As an admin, you have full system access and can query all data without restrictions."
                     }
                   </span>
@@ -375,11 +369,6 @@ export function QueryInterface() {
                       {watchedRole === 'customer' && (
                         <p className="text-xs text-gray-500 dark:text-gray-400">
                           Required for customer access
-                        </p>
-                      )}
-                      {watchedRole === 'employee' && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                          Optional - leave empty for all entities
                         </p>
                       )}
                       {errors[getScopingFieldName() as keyof typeof errors] && (

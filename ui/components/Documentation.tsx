@@ -105,38 +105,6 @@ const response = await fetch('/api/v2/query', {
 });`
     },
     {
-      title: 'Employee Query (All Entities)',
-      description: 'Employee query accessing all entities for reporting',
-      language: 'javascript',
-      code: `const employeeQuery = {
-  query: "Show me all shipments across all entities for this month",
-  user_role: "employee"
-};
-
-const response = await fetch('/api/v2/query', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify(employeeQuery)
-});
-
-// No scoping applied - accesses all entities`
-    },
-    {
-      title: 'Employee Query (Specific Entities)',
-      description: 'Employee query with entity whitelist access',
-      language: 'javascript',
-      code: `const employeeQuery = {
-  query: "Compare shipments between entity_123 and entity_456",
-  user_role: "employee",
-};
-
-const response = await fetch('/api/v2/query', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify(employeeQuery)
-});`
-    },
-    {
       title: 'Simple Role-Based Access',
       description: 'Using simple role-based access control',
       language: 'javascript',
@@ -391,6 +359,41 @@ def compute_table_relevance(query, table_doc, table_embedding):
                     </SyntaxHighlighter>
                   </div>
 
+                  <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">Join‑Hinted Planning</h4>
+                  <p className="text-gray-700 dark:text-gray-300 mb-4">
+                    The planner now receives explicit join hints computed from the schema graph (minimal paths across selected tables). The LLM is instructed to use only these joins (including any bridge tables) when connecting tables, reducing invalid join choices and improving accuracy.
+                  </p>
+                  <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg mb-6">
+                    <SyntaxHighlighter language="text" style={theme === 'dark' ? vscDarkPlus : tomorrow} customStyle={{ margin: 0, background: 'transparent' }}>
+{`Join Hints (use only these when connecting tables):
+INNER JOIN: shipments.order_id -> orders.id
+INNER JOIN: orders.accounts_user_id -> users.accounts_user_id`}
+                    </SyntaxHighlighter>
+                  </div>
+
+                  <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">AST‑Based SQL Validation</h4>
+                  <p className="text-gray-700 dark:text-gray-300 mb-4">
+                    Generated SQL is validated with an AST parser (sqlglot) to precisely check table aliases, column existence, and scoping filters on the correct aliases. This complements heuristic checks and feeds actionable refinement signals back into the loop.
+                  </p>
+                  <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg mb-6">
+                    <SyntaxHighlighter language="python" style={theme === 'dark' ? vscDarkPlus : tomorrow} customStyle={{ margin: 0, background: 'transparent' }}>
+{`import sqlglot
+from sqlglot import exp
+
+ast = sqlglot.parse_one(sql)
+alias_to_table = {t.alias_or_name.lower(): (t.name or '').lower() for t in ast.find_all(exp.Table)}
+
+# Column existence
+for col in ast.find_all(exp.Column):
+    col_name = (col.name or '').lower()
+    tbl_alias = (col.table or '')
+    # validate col_name in schema_graph.tables[alias_to_table[tbl_alias]]
+
+# Scoping on correct alias
+# Ensure WHERE contains: <alias>.<scope_col> = <scoping_value>`}
+                    </SyntaxHighlighter>
+                  </div>
+
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">4.4 Iterative Validation Loop</h3>
                   <p className="text-gray-700 dark:text-gray-300 mb-4">
                     The system employs an iterative validation loop with error-specific refinement. When validation fails, the system analyzes the error type and refines the schema context accordingly, adding missing tables for scoping issues or relationship context for join problems.
@@ -478,6 +481,33 @@ class PermissionManager:
                   <p className="text-gray-700 dark:text-gray-300 mb-4">
                     Common error patterns include: missing scoping filters (15% of failures), incorrect join conditions (10% of failures), and column name mismatches (8% of failures). The iterative validation loop successfully resolves 70% of these errors through context refinement.
                   </p>
+                </section>
+
+                <section>
+                  <h2 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-white mb-3">7.2 Evaluation Harness</h2>
+                  <p className="text-gray-700 dark:text-gray-300 mb-4">
+                    A minimal evaluation harness is provided to benchmark table selection and SQL generation on a golden set. It reports table recall/precision and optional SQL exact/regex match, writing a JSON report for analysis.
+                  </p>
+                  <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg mb-4">
+                    <SyntaxHighlighter language="bash" style={theme === 'dark' ? vscDarkPlus : tomorrow} customStyle={{ margin: 0, background: 'transparent' }}>
+{`python tools/eval_runner.py \
+  --goldens tests/eval/goldens.json \
+  --top-k 8 \
+  --use-mock-llm 1`}
+                    </SyntaxHighlighter>
+                  </div>
+                  <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg">
+                    <SyntaxHighlighter language="json" style={theme === 'dark' ? vscDarkPlus : tomorrow} customStyle={{ margin: 0, background: 'transparent' }}>
+{`{
+  "summary": {
+    "num_cases": 5,
+    "avg_table_recall": 0.86,
+    "avg_table_precision": 0.78,
+    "sql_accuracy": 0.60
+  }
+}`}
+                    </SyntaxHighlighter>
+                  </div>
                 </section>
 
                 <section>
@@ -2720,12 +2750,6 @@ SECURITY_ENABLE_AUTO_SCOPING=true`}
     "access_pattern": "single_entity",
     "description": "Customer access limited to their entity"
   },
-  "employee": {
-    "requires_scoping": false,
-    "access_pattern": "all_entities",
-    "can_scope_to_specific": true,
-    "description": "Employee access to all entities with optional scoping"
-  },
   "admin": {
     "requires_scoping": false,
     "access_pattern": "all_entities",
@@ -2746,14 +2770,9 @@ SECURITY_ENABLE_AUTO_SCOPING=true`}
                     style={theme === 'dark' ? vscDarkPlus : tomorrow}
                     customStyle={{ margin: 0, background: 'transparent' }}
                   >
-{`# Entity whitelist for employees
-SECURITY_ENABLE_ENTITY_WHITELIST=false
-SECURITY_EMPLOYEE_ENTITY_WHITELIST=[]
-
-# Security policies
+{`# Security policies
 SECURITY_MAX_ENTITIES_PER_QUERY=10
 SECURITY_ENABLE_CROSS_ENTITY_QUERIES=false
-SECURITY_REQUIRE_EXPLICIT_ENTITY_SELECTION=true
 
 # Audit logging
 SECURITY_ENABLE_ACCESS_LOGGING=true`}
@@ -2765,7 +2784,7 @@ SECURITY_ENABLE_ACCESS_LOGGING=true`}
                 <h4 className="font-semibold text-gray-900 dark:text-white mb-3">Configuration Examples</h4>
                 <div className="space-y-4">
                   <div>
-                    <h5 className="font-semibold text-gray-900 dark:text-white mb-2">Basic Setup (Customer + Employee)</h5>
+                    <h5 className="font-semibold text-gray-900 dark:text-white mb-2">Basic Setup (Customer + Admin)</h5>
                     <div className="bg-gray-900 rounded-lg p-3">
                       <SyntaxHighlighter
                         language="bash"
@@ -2775,20 +2794,6 @@ SECURITY_ENABLE_ACCESS_LOGGING=true`}
 {`SECURITY_ENABLE_MULTI_ROLE_ACCESS=true
 SECURITY_DEFAULT_USER_ROLE=customer
 SECURITY_ENABLE_ACCESS_LOGGING=true`}
-                      </SyntaxHighlighter>
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <h5 className="font-semibold text-gray-900 dark:text-white mb-2">Employee Whitelist</h5>
-                    <div className="bg-gray-900 rounded-lg p-3">
-                      <SyntaxHighlighter
-                        language="bash"
-                        style={theme === 'dark' ? vscDarkPlus : tomorrow}
-                        customStyle={{ margin: 0, background: 'transparent', fontSize: '0.875rem' }}
-                      >
-{`SECURITY_ENABLE_ENTITY_WHITELIST=true
-SECURITY_EMPLOYEE_ENTITY_WHITELIST=["entity_123", "entity_456", "entity_789"]`}
                       </SyntaxHighlighter>
                     </div>
                   </div>
