@@ -3,8 +3,8 @@ import pandas as pd
 from sqlalchemy import create_engine, text, exc
 from sqlalchemy.engine import Engine
 from sqlalchemy.pool import QueuePool
-from .config import settings
-from .error_codes import create_database_error, ErrorCodes
+from ..utils.config import settings
+from ..utils.error_codes import create_database_error, ErrorCodes
 
 class DatabaseExecutor:
     def __init__(self):
@@ -129,7 +129,7 @@ class DatabaseExecutor:
     def _apply_limit_guardrail(self, sql: str) -> str:
         """Apply LIMIT guardrail to prevent large result sets"""
         import re
-        from .config import settings
+        from ..utils.config import settings
         
         try:
             sql_upper = sql.upper()
@@ -180,7 +180,7 @@ class DatabaseExecutor:
         """Get row count for a table (with optional scoping value filter)"""
         try:
             if scoping_value:
-                from .config import settings
+                from ..utils.config import settings
                 scoping_column = settings.security.SCOPING_COLUMN
                 sql = f"SELECT COUNT(*) as count FROM {table_name} WHERE {scoping_column} = %s;"
                 result = self.execute_query(sql, {scoping_column: scoping_value})
@@ -218,4 +218,6 @@ class DatabaseExecutor:
             # Database connections closed
 
 # Global instance
-db_executor = DatabaseExecutor() 
+db_executor = DatabaseExecutor()
+
+

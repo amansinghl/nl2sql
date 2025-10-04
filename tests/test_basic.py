@@ -26,7 +26,7 @@ def test_root_endpoint():
 
 def test_schema_endpoint():
     """Test schema endpoint"""
-    response = client.get("/schema")
+    response = client.get("/api/v2/schema")
     assert response.status_code == 200
     data = response.json()
     assert "tables" in data
@@ -35,7 +35,7 @@ def test_schema_endpoint():
 
 def test_table_info_endpoint():
     """Test table info endpoint"""
-    response = client.get("/schema/shipments")
+    response = client.get("/api/v2/schema/shipments")
     assert response.status_code == 200
     data = response.json()
     assert "table_name" in data
@@ -43,12 +43,12 @@ def test_table_info_endpoint():
 
 def test_query_endpoint_invalid_request():
     """Test query endpoint with invalid request"""
-    response = client.post("/query", json={})
+    response = client.post("/api/v2/query", json={})
     assert response.status_code == 422  # Validation error
 
 def test_query_endpoint_missing_fields():
     """Test query endpoint with missing required fields"""
-    response = client.post("/query", json={"query": "test query"})
+    response = client.post("/api/v2/query", json={"query": "test query"})
     assert response.status_code == 422  # Missing entity_id
 
 def test_query_endpoint_valid_request():
@@ -58,7 +58,7 @@ def test_query_endpoint_valid_request():
         "entity_id": "test123",
         "include_explanation": False
     }
-    response = client.post("/query", json=request_data)
+    response = client.post("/api/v2/query", json=request_data)
     # This might fail if model is not loaded, but should return proper error
     assert response.status_code in [200, 500]  # Either success or model error
 

@@ -58,3 +58,30 @@ const ResultsVisualization = ({ data, queryType }) => {
   // Auto-detect chart type based on data structure
   // Render appropriate visualization
 }
+
+
+
+Architecture overview and flow
+Core path: POST /api/v2/query → intelligent_sql_generator.generate_accurate_sql → stages:
+Table retrieval via schema_index (BM25 + centrality) with keyword fallback.
+Context build: focused schema + relationship and code-mapping hints; optional examples RAG.
+Plan-then-generate: llm_handler.generate_sql (plan JSON → validated/auto-repaired → SQL).
+Validation loop: schema-aware validation, scoping enforcement, join/column checks, optional EXPLAIN feedback loop.
+Execute with guardrails, optional result explanation.
+Schema: rich JSON in graph/schema_graph.json with tables, columns, examples, code mappings, and relationships including explicit to_column where needed; graph built in SchemaGraph and retrieval in SchemaIndex.
+LLM usage: configurable providers, prompts include strict rules and few-shots; circuit-breaker wrapped; plan validator enforces structure/repairs joins/columns; SQL generator adheres to plan.
+Validation: QueryValidator ensures scoping, safety rules, max tables, operation whitelist, join correctness, column existence hints; iterative refinement on failures.
+Logging/metrics: event/audit logs in JSONL with rotation; basic API metrics middleware.
+
+
+
+//PROMPT TO CHECK AND VALIDATE 
+You are an expert AI-Assistant specialized in Natural Language to SQL (NL2SQL) systems, database schema understanding, and LLM-based accuracy improvement. I will provide you with my NL2SQL codebase. Your task is to carefully review the code, analyze the architecture, and identify strengths, weaknesses, and bottlenecks that may reduce accuracy.
+While reviewing, focus on:
+Query translation accuracy (handling of joins, nested queries, ambiguous natural language).
+Schema representation (graph-based, embeddings, linking strategies).
+LLM usage (prompting, fine-tuning, retrieval augmentation, error handling).
+Evaluation & metrics (exact match accuracy, execution accuracy, error categories).
+Code quality & modularity (maintainability, scalability, extensibility).
+After reviewing, suggest specific, practical improvements with reasoning, examples, and possible implementation strategies. Highlight trade-offs (accuracy vs. latency vs. complexity) and recommend best practices to improve accuracy.
+Finally, summarize the top 3 improvements I should prioritize for maximum accuracy gain.

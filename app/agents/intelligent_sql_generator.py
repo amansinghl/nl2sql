@@ -10,16 +10,16 @@ from sklearn.metrics.pairwise import cosine_similarity
 import asyncio
 from functools import lru_cache
 
-from .graph_builder import schema_graph
-from .llm_handler import LLMHandler
-from .query_validator import QueryValidator
-from .error_codes import create_validation_error, ErrorCodes
-from .user_context import UserContext, permission_manager
-from .loggery import access_logger, query_logger
-from .config import settings
-from .schema_index import schema_index
-from .plan_validator import plan_validator
-from .projection_advisor import projection_advisor
+from ..loaders.graph_builder import schema_graph
+from ..agents.llm_handler import LLMHandler
+from ..validators.query_validator import QueryValidator
+from ..utils.error_codes import create_validation_error, ErrorCodes
+from ..utils.user_context import UserContext, permission_manager
+from ..utils.loggery import access_logger, query_logger
+from ..utils.config import settings
+from ..loaders.schema_index import schema_index
+from ..validators.plan_validator import plan_validator
+from ..validators.projection_advisor import projection_advisor
 
 @dataclass
 class TableScore:
@@ -124,14 +124,9 @@ class IntelligentSQLGenerator:
         # Initialize code mappings from schema
         self.code_mappings: Dict[str, Dict[str, Any]] = self.schema_graph.graph_data.get('code_mappings', {})
         
-        # Query templates are now generated dynamically based on user role
-        
         # Initialize embeddings
         self._initialize_embeddings()
         self._initialize_example_embeddings()
-    
-    
-    # Removed column alias/join mapping helpers - deprecated with new schema
     
     def _initialize_embeddings(self):
         """Initialize table embeddings for semantic similarity"""
@@ -189,8 +184,6 @@ class IntelligentSQLGenerator:
                         "attempts": 0
                     }
             
-            # Removed legacy template fast-path to avoid incorrect intent matches
-            
             # Stage 1: Smart Table Selection
             relevant_tables = await self._intelligent_table_selection(user_query)
             
@@ -243,7 +236,7 @@ class IntelligentSQLGenerator:
             # Query event logging (failure)
             try:
                 try:
-                    from .error_codes import NL2SQLError  # local import to avoid top-level churn
+                    from ..utils.error_codes import NL2SQLError  # local import to avoid top-level churn
                 except Exception:
                     NL2SQLError = tuple()  # type: ignore
                 error_details = getattr(e, 'details', None) if isinstance(e, NL2SQLError) else None
@@ -622,7 +615,7 @@ class IntelligentSQLGenerator:
         
         # Add scoping instructions if required
         if user_context:
-            from .user_context import permission_manager
+            from ..utils.user_context import permission_manager
             scoping_requirements = permission_manager.get_scoping_requirements(user_context)
             scoping_required = scoping_requirements.get('scoping_required', True)
             
@@ -634,22 +627,17 @@ class IntelligentSQLGenerator:
         
         # Add key code mappings (labels -> codes) if relevant
         if query_context.requires_code_mappings and self.code_mappings:
-            # Example: invert vamaship_tracking_codes_master.new_code mapping
             tracking_map = self.code_mappings.get('vamaship_tracking_codes_master.new_code', {})
             values = (tracking_map or {}).get('values', {})
             if values:
-                # Build label->code for a few common statuses
                 description += "Key Status Codes (label -> code):\n"
-                # Prefer common statuses
                 preferred = ['Delivered', 'Shipment Out for Delivery', 'Shipment In-Transit', 'Received at Destination Hub']
                 printed = 0
-                # Invert mapping
                 label_to_code = {label: code for code, label in values.items()}
                 for label in preferred:
                     if label in label_to_code and printed < 6:
                         description += f"- {label} -> {label_to_code[label]}\n"
                         printed += 1
-                # If not enough printed, fill first few
                 if printed < 4:
                     for code, label in list(values.items())[: 6 - printed]:
                         description += f"- {label} -> {code}\n"
@@ -660,16 +648,14 @@ class IntelligentSQLGenerator:
         for table_name in tables:
             if table_name not in self.schema_graph.tables:
                 continue
-                
+            
             table_info = self.schema_graph.tables[table_name]
             description += f"Table: {table_name}\n"
-            # Provide full column list for each table so the LLM can choose accurately
             selected_columns = table_info.get('columns', [])
             description += f"Columns: {', '.join(selected_columns)}\n"
             
             if table_info.get('scoped', False):
                 scoping_column = table_info.get('scoping_column', settings.security.SCOPING_COLUMN)
-                # Only show scoped line when it matches entity scoping column
                 if scoping_column == settings.security.SCOPING_COLUMN:
                     description += f"Scoped: {scoping_column}\n"
             description += "\n"
@@ -678,7 +664,6 @@ class IntelligentSQLGenerator:
         description += "Key Relationships:\n"
         for rel in self.schema_graph.relationships:
             if rel['from'] in tables or rel['to'] in tables:
-                # Prefer explicit to_column; otherwise, if the target table has the same column name as 'on', use that; else fallback to id
                 explicit_to_col = rel.get('to_column')
                 if explicit_to_col:
                     to_column = explicit_to_col
@@ -705,18 +690,16 @@ class IntelligentSQLGenerator:
                 if sim >= threshold:
                     ex = self._examples_index[idx][1]
                     candidates.append((sim, {"table": table_name, "query": ex.get('query', ''), "sql": ex.get('sql', '')}))
-            # sort by similarity desc
             candidates.sort(key=lambda x: x[0], reverse=True)
             return [ex for _, ex in candidates[:top_k]]
         except Exception:
             return []
-
+    
     def _build_rag_optimized_schema_context(self, relevant_tables: List[str], query_context: QueryContext, user_context: UserContext, examples: List[Dict[str, str]]) -> str:
         """Build schema context and append RAG examples section"""
         base = self._build_optimized_schema_context(relevant_tables, query_context, user_context)
         if not examples:
             return base
-        # Append examples in a compact format
         base += "\nRelevant Examples (use as patterns, adapt columns/filters precisely):\n"
         for ex in examples:
             q = (ex.get('query') or '').strip()
@@ -731,10 +714,9 @@ class IntelligentSQLGenerator:
         """Get columns most relevant to the specific query"""
         relevant_columns = []
         
-        # Check for common query patterns
         if 'count' in query_lower or 'how many' in query_lower:
             id_columns = [col for col in columns if 'id' in col.lower()]
-            relevant_columns.extend(id_columns[:2])  # Limit to 2 most relevant
+            relevant_columns.extend(id_columns[:2])
         
         if 'revenue' in query_lower or 'amount' in query_lower or 'price' in query_lower:
             price_columns = [col for col in columns if any(term in col.lower() for term in ['price', 'amount', 'cost', 'value'])]
@@ -752,120 +734,10 @@ class IntelligentSQLGenerator:
             name_columns = [col for col in columns if any(term in col.lower() for term in ['name', 'first', 'last', 'entity'])]
             relevant_columns.extend(name_columns[:2])
         
-        return list(set(relevant_columns))  # Remove duplicates
+        return list(set(relevant_columns))
     
-    # (Removed legacy _check_query_templates implementation)
-    
-    def _extract_tables_from_sql(self, sql: str) -> List[str]:
-        """Extract table names from SQL query"""
-        tables = []
-        sql_lower = sql.lower()
-        
-        # Simple extraction of table names after FROM and JOIN
-        for table_name in self.schema_graph.tables.keys():
-            if f'from {table_name}' in sql_lower or f'join {table_name}' in sql_lower:
-                tables.append(table_name)
-        
-        return tables
-    
-    def _fix_count_query(self, sql: str, user_query: str) -> str:
-        """Fix SQL that should be a count query but isn't"""
-        import re
-        
-        # Extract the main table from FROM clause
-        from_match = re.search(r'FROM\s+(\w+)', sql, re.IGNORECASE)
-        if not from_match:
-            return sql
-        
-        main_table = from_match.group(1)
-        
-        # Extract WHERE clause
-        where_match = re.search(r'WHERE\s+(.+?)(?:\s+ORDER\s+BY|\s+LIMIT|$)', sql, re.IGNORECASE | re.DOTALL)
-        where_clause = where_match.group(1).strip() if where_match else ""
-        
-        # Build new COUNT query
-        new_sql = f"SELECT COUNT(*) FROM {main_table}"
-        if where_clause:
-            new_sql += f" WHERE {where_clause}"
-        
-        return new_sql
-    
-    def _validate_columns_against_schema(self, sql: str, tables: List[str]) -> List[str]:
-        """Validate that all columns used in SQL actually exist in the schema"""
-        issues = []
-        sql_lower = sql.lower()
-        
-        # Extract column names from SQL (simplified approach)
-        # Look for column names in SELECT, WHERE, GROUP BY, ORDER BY clauses
-        import re
-        
-        # Find all potential column references
-        column_patterns = [
-            r'select\s+([^from]+?)\s+from',  # SELECT clause
-            r'where\s+([^group|order|limit]+?)(?:\s+group|\s+order|\s+limit|$)',  # WHERE clause
-            r'group\s+by\s+([^order|limit]+?)(?:\s+order|\s+limit|$)',  # GROUP BY clause
-            r'order\s+by\s+([^limit]+?)(?:\s+limit|$)',  # ORDER BY clause
-        ]
-        
-        raw_columns = set()
-        for pattern in column_patterns:
-            matches = re.findall(pattern, sql_lower, re.IGNORECASE | re.DOTALL)
-            for match in matches:
-                # Split by comma and clean up
-                columns = [col.strip().split()[0] for col in match.split(',') if col.strip()]
-                raw_columns.update(columns)
-        
-        # Remove common SQL keywords and normalize/clean tokens
-        sql_keywords = {'count', 'sum', 'avg', 'max', 'min', 'distinct', 'case', 'when', 'then', 'else', 'end', 'as', 'and', 'or', 'not', 'in', 'like', 'between', 'is', 'null', 'desc', 'asc'}
-        cleaned_columns: Set[str] = set()
-        for token in raw_columns:
-            if not token or token in sql_keywords or token.isdigit():
-                continue
-            # ignore star and table.*
-            if token == '*' or token.endswith('.*'):
-                continue
-            # ignore function calls like count(*), sum(x)
-            if '(' in token or ')' in token:
-                continue
-            # strip quotes/backticks
-            t = token.strip('`"')
-            # if qualified alias.tbl or db.tbl.col -> keep last segment
-            if '.' in t:
-                parts = t.split('.')
-                t = parts[-1]
-                if t == '*':
-                    # was table.*
-                    continue
-            t = t.strip()
-            if not t or t in sql_keywords:
-                continue
-            cleaned_columns.add(t)
-        
-        # Build a union of available columns across used tables
-        available_columns: Set[str] = set()
-        sample_table_for_msg = None
-        sample_cols_for_msg: List[str] = []
-        
-        for table in tables:
-            if table not in self.schema_graph.tables:
-                continue
-            table_columns = self.schema_graph.tables[table].get('columns', [])
-            if sample_table_for_msg is None:
-                sample_table_for_msg = table
-                sample_cols_for_msg = table_columns[:5]
-            available_columns.update(col.lower() for col in table_columns)
-        
-        for column in cleaned_columns:
-            if column not in available_columns:
-                if sample_table_for_msg:
-                    issues.append(f"❌ Column '{column}' doesn't exist in relevant tables. Example '{sample_table_for_msg}' columns: {', '.join(sample_cols_for_msg)}")
-                else:
-                    issues.append(f"❌ Column '{column}' doesn't exist in relevant tables.")
-        
-        
-        return issues
-    
-    # Phase 3: Validation Loop with Iterative Refinement
+    # Removed: manual COUNT rewriting. We trust the model to decide projections.
+
     async def _generate_with_validation_loop(self, user_query: str, scoping_value: str, 
                                            relevant_tables: List[str], schema_context: str, 
                                            query_context: QueryContext, user_context: UserContext = None) -> Dict[str, Any]:
@@ -877,52 +749,17 @@ class IntelligentSQLGenerator:
         
         while attempt < self.MAX_VALIDATION_ATTEMPTS:
             try:
-                # Generate SQL
                 sql = await self.llm_handler.generate_sql(
                     user_query, scoping_value, current_tables, current_schema_context
                 )
                 
-                # Intent handling without heuristic projection rewrites
-                from .projection_advisor import projection_advisor
-                intents = projection_advisor.analyze_intent(user_query)
+                # Trust the LLM to choose COUNT vs detailed projection; no intent enforcement
                 sql_stripped_upper = sql.strip().upper()
-                if intents.get('is_count', False):
-                    if not sql_stripped_upper.startswith('SELECT COUNT('):
-                        sql = self._fix_count_query(sql, user_query)
-                else:
-                    if sql_stripped_upper.startswith('SELECT COUNT('):
-                        # Treat incorrect COUNT as a planning/generation error; trigger refinement
-                        validation_result = {
-                            "valid": False,
-                            "error": "LLM returned COUNT but details were requested. Regenerate with detailed projection.",
-                            "modified_sql": sql,
-                            "tables": current_tables
-                        }
-                        # Refinement path
-                        attempt += 1
-                        if attempt < self.MAX_VALIDATION_ATTEMPTS:
-                            refinement_result = self._refine_schema_context(
-                                current_schema_context, validation_result["error"], 
-                                user_query, current_tables
-                            )
-                            current_schema_context = refinement_result["schema_context"]
-                            current_tables = refinement_result["tables"]
-                            continue
-                        else:
-                            return {
-                                "success": False,
-                                "sql": sql,
-                                "tables_used": current_tables,
-                                "attempts": attempt,
-                                "error": validation_result["error"]
-                            }
                 
-                # Enhanced validation with schema accuracy checks
                 validation_result = self._validate_sql_with_schema_accuracy(
                     sql, scoping_value, user_context, current_tables
                 )
                 
-                # Additional check: ensure SQL uses only tables from the plan
                 if validation_result["valid"]:
                     sql_tables = self._extract_tables_from_sql(sql)
                     plan_tables = set(current_tables)
@@ -936,11 +773,10 @@ class IntelligentSQLGenerator:
                         }
                 
                 if validation_result["valid"]:
-                    # Optional DB feedback loop via EXPLAIN
-                    from .config import settings as _settings
+                    from ..utils.config import settings as _settings
                     if getattr(_settings, 'ENABLE_DB_FEEDBACK_LOOP', False):
                         try:
-                            from .db_executor import db_executor
+                            from ..engines.db_executor import db_executor
                             explain_sql = f"EXPLAIN {validation_result.get('modified_sql', sql).rstrip(';')}"
                             explain_result = db_executor.execute_query(explain_sql)
                             if not explain_result.get('success', False):
@@ -978,7 +814,6 @@ class IntelligentSQLGenerator:
                             "error": None
                         }
                 
-                # If validation fails, refine context and retry
                 attempt += 1
                 if attempt < self.MAX_VALIDATION_ATTEMPTS:
                     refinement_result = self._refine_schema_context(
@@ -991,9 +826,8 @@ class IntelligentSQLGenerator:
             except Exception as e:
                 attempt += 1
                 if attempt >= self.MAX_VALIDATION_ATTEMPTS:
-                    # Capture structured details if available (e.g., NL2SQLError)
                     try:
-                        from .error_codes import NL2SQLError  # local import
+                        from ..utils.error_codes import NL2SQLError  # local import
                     except Exception:
                         NL2SQLError = tuple()  # type: ignore
                     error_details = getattr(e, 'details', None) if isinstance(e, NL2SQLError) else None
@@ -1006,7 +840,6 @@ class IntelligentSQLGenerator:
                         "error_details": error_details
                     }
         
-        # If all attempts fail, return error with context
         return {
             "success": False,
             "sql": sql if 'sql' in locals() else "",
@@ -1017,78 +850,35 @@ class IntelligentSQLGenerator:
     
     def _validate_sql_with_schema_accuracy(self, sql: str, scoping_value: str, user_context: UserContext, tables: List[str]) -> Dict[str, Any]:
         """Enhanced validation with schema accuracy checks"""
-        
-        # First run standard validation
         validation_result = self.validator.validate_sql(sql, scoping_value, user_context)
-        
         if not validation_result["valid"]:
             return validation_result
-        
-        # Use actually used tables from base validator for subsequent checks
         used_tables = validation_result.get("tables", tables)
-        
-        # Additional schema accuracy checks
         accuracy_issues = []
-        
-        # First, validate that all columns used actually exist in the schema
-        schema_validation_issues = self._validate_columns_against_schema(sql, used_tables)
-        accuracy_issues.extend(schema_validation_issues)
-        
-        # Additional heuristics
         sql_lower = sql.lower()
-        
-        # Check for missing JOINs when using supplier/carrier names
-        if re.search(r'\bcarrier_name\b', sql_lower) or re.search(r'\bsupplier_name\b', sql_lower):
-            if 'join' not in sql_lower or 'suppliers' not in sql_lower:
-                accuracy_issues.append("❌ Missing JOIN for carrier/supplier names. ✅ Add: JOIN suppliers s ON shipments.supplier_id = s.id")
-        
-        # Check for proper status code usage
-        if 'delivered' in sql_lower and 'tracking_status' in sql_lower:
-            if "'delivered'" in sql_lower.lower():
-                accuracy_issues.append("❌ Use tracking_status = '1900' for 'Delivered', not 'delivered'")
-        
-        # Check for common date column mistakes (only if truly absent in used tables)
-        if re.search(r'\bdelivery_date\b', sql_lower):
-            has_delivery_date = any(
-                'delivery_date' in (col.lower() for col in self.schema_graph.tables.get(t, {}).get('columns', []))
-                for t in used_tables
-            )
-            if not has_delivery_date:
-                accuracy_issues.append("❌ Column 'delivery_date' doesn't exist. ✅ Use: shipment_date")
-        
-        if re.search(r'\border_date\b', sql_lower):
-            has_order_date = any(
-                'order_date' in (col.lower() for col in self.schema_graph.tables.get(t, {}).get('columns', []))
-                for t in used_tables
-            )
-            if not has_order_date:
-                accuracy_issues.append("❌ Column 'order_date' doesn't exist. ✅ Use: shipment_date or created_at")
-        
-        # Check for missing scoping - only for entity scoping column
+        # Skip manual column checks when using AST. We rely on sqlglot when available.
+        # No additional schema column checks here to minimize redundancy.
+        # Removed domain-specific hardcoded hints to keep the validator minimal
         if user_context:
-            from .user_context import permission_manager
+            from ..utils.user_context import permission_manager
             scoping_requirements = permission_manager.get_scoping_requirements(user_context)
             scoping_required = scoping_requirements.get('scoping_required', True)
             if scoping_required and scoping_value:
                 missing_scope_columns: List[str] = []
                 for table in used_tables:
                     table_info = self.schema_graph.tables.get(table, {})
-                    # Only enforce entity-level scoping, not other columns used for code mappings
                     if table_info.get('scoped', False):
                         table_scope_col = table_info.get('scoping_column', settings.security.SCOPING_COLUMN)
                         if table_scope_col != settings.security.SCOPING_COLUMN:
                             continue
                         if table_scope_col and table_scope_col.lower() not in sql_lower:
                             missing_scope_columns.append(table_scope_col)
-                # If none of the required scoping columns are present in SQL, flag once
                 if missing_scope_columns:
                     unique_cols = sorted(set(missing_scope_columns))
                     suggestions = ", ".join(f"{col} = '{scoping_value}'" for col in unique_cols)
                     accuracy_issues.append(
                         f"❌ Missing scoping filter. ✅ Add one of: {suggestions}"
                     )
-
-                # Additional rule: if query touches ONLY non-scoped tables but relates to a scoped parent, recommend joining parent and applying scoping
                 if settings.security.SCOPING_COLUMN.lower() not in sql_lower:
                     all_used_are_non_scoped = True
                     for t in used_tables:
@@ -1097,12 +887,10 @@ class IntelligentSQLGenerator:
                             all_used_are_non_scoped = False
                             break
                     if all_used_are_non_scoped:
-                        # find candidate parent scoped tables reachable by relationships
                         candidate_parents: List[str] = []
                         parent_join_hints: List[str] = []
                         for t in used_tables:
                             for rel in self.schema_graph.relationships:
-                                # if non-scoped table t points to a scoped table
                                 if rel.get('from') == t:
                                     parent = rel.get('to')
                                     pinfo = self.schema_graph.tables.get(parent, {})
@@ -1111,27 +899,22 @@ class IntelligentSQLGenerator:
                                         on_col = rel.get('on')
                                         to_col = rel.get('to_column', on_col if on_col in pinfo.get('columns', []) else 'id')
                                         parent_join_hints.append(f"JOIN {parent} p ON {t}.{on_col} = p.{to_col} AND p.{settings.security.SCOPING_COLUMN} = '{scoping_value}'")
-                                # or if scoped parent points to t (reverse direction)
                                 if rel.get('to') == t:
                                     parent = rel.get('from')
                                     pinfo = self.schema_graph.tables.get(parent, {})
                                     if pinfo.get('scoped', False) and pinfo.get('scoping_column', settings.security.SCOPING_COLUMN) == settings.security.SCOPING_COLUMN:
                                         candidate_parents.append(parent)
                                         on_col = rel.get('on')
-                                        # here rel.from=parent, rel.to=t, so join hint flips
                                         to_col = rel.get('to_column', on_col if on_col in self.schema_graph.tables.get(t, {}).get('columns', []) else 'id')
                                         parent_join_hints.append(f"JOIN {parent} p ON p.{on_col} = {t}.{to_col} AND p.{settings.security.SCOPING_COLUMN} = '{scoping_value}'")
                         if candidate_parents:
-                            # de-duplicate and suggest the most relevant (prefer 'shipments')
                             unique_parents = list(dict.fromkeys(candidate_parents))
                             preferred_parent = 'shipments' if 'shipments' in unique_parents else unique_parents[0]
-                            # pick first matching hint for preferred parent
                             hint = next((h for h in parent_join_hints if f"JOIN {preferred_parent} " in h), parent_join_hints[0]) if parent_join_hints else ''
                             msg = f"❌ Missing tenant scoping. ✅ Join '{preferred_parent}' and filter p.{settings.security.SCOPING_COLUMN} = '{scoping_value}'."
                             if hint:
                                 msg += f" For example: {hint}"
                             accuracy_issues.append(msg)
-        
         
         if accuracy_issues:
             return {
@@ -1143,23 +926,45 @@ class IntelligentSQLGenerator:
         
         return validation_result
     
+    def _extract_tables_from_sql(self, sql: str) -> List[str]:
+        """Best-effort extraction of table names from SQL text.
+        Looks for identifiers following FROM, JOIN, UPDATE, INTO, DELETE FROM.
+        """
+        try:
+            sql_norm = re.sub(r"\s+", " ", sql).strip()
+            tables: Set[str] = set()
+            patterns = [
+                r"\bFROM\s+([`\w\.]+)",
+                r"\bJOIN\s+([`\w\.]+)",
+                r"\bUPDATE\s+([`\w\.]+)",
+                r"\bINTO\s+([`\w\.]+)",
+                r"\bDELETE\s+FROM\s+([`\w\.]+)",
+            ]
+            for pat in patterns:
+                for m in re.finditer(pat, sql_norm, flags=re.IGNORECASE):
+                    raw = m.group(1)
+                    name = raw.split(".")[-1].strip("`").lower()
+                    if name and not re.match(r"^(id|count|sum|avg|min|max)$", name):
+                        tables.add(name)
+            return list(tables)
+        except Exception:
+            return []
+
+
     def _refine_schema_context(self, schema_context: str, validation_error: str, 
                              user_query: str, current_tables: List[str]) -> Dict[str, Any]:
         """Refine schema context based on validation errors"""
         
-        # Add more tables if scoping issues
         if "scoping" in validation_error.lower():
             additional_tables = self._add_missing_scoped_tables(current_tables)
             current_tables.extend(additional_tables)
-            current_tables = list(dict.fromkeys(current_tables))  # Remove duplicates
+            current_tables = list(dict.fromkeys(current_tables))
         
-        # Add relationship context if join issues
         if "join" in validation_error.lower() or "relationship" in validation_error.lower():
             relationship_tables = self._get_relationship_context(current_tables, user_query)
             current_tables.extend(relationship_tables)
             current_tables = list(dict.fromkeys(current_tables))
         
-        # Rebuild schema context with refined tables
         refined_context = self._build_focused_schema_description(current_tables, 
             QueryContext(user_query, "", current_tables, "", 0.5, True, True))
         
@@ -1171,8 +976,6 @@ class IntelligentSQLGenerator:
     def _add_missing_scoped_tables(self, current_tables: List[str]) -> List[str]:
         """Add missing scoped tables that might be needed"""
         missing_tables = []
-        
-        # Add core scoped tables that might be missing
         core_scoped_tables = ['entities', 'shipments', 'orders', 'locations', 'transactions']
         for table in core_scoped_tables:
             if table not in current_tables and table in self.schema_graph.tables:
@@ -1182,7 +985,8 @@ class IntelligentSQLGenerator:
         
         return missing_tables
 
-# Factory function for easy integration
 def create_intelligent_sql_generator(llm_handler: LLMHandler, validator: QueryValidator) -> IntelligentSQLGenerator:
     """Create an intelligent SQL generator instance"""
     return IntelligentSQLGenerator(llm_handler, validator)
+
+

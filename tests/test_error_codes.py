@@ -3,12 +3,12 @@ Test cases for the error code system
 """
 
 import pytest
-from app.error_codes import (
+from app.utils.error_codes import (
     ErrorCodes, NL2SQLError, ErrorHandler,
     create_database_error, create_llm_error, create_validation_error,
     create_system_error, create_request_error
 )
-from app.error_responses import format_error_response
+from app.utils.error_responses import format_error_response
 
 
 class TestErrorCodes:
@@ -196,7 +196,7 @@ class TestErrorCodeLookup:
     
     def test_get_errors_by_category(self):
         """Test getting errors by category"""
-        from app.error_codes import ErrorCategory
+        from app.utils.error_codes import ErrorCategory
         
         db_errors = ErrorHandler.get_errors_by_category(ErrorCategory.DATABASE)
         

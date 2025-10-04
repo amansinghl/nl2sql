@@ -1,0 +1,30 @@
+[
+  {
+    "question": "How many shipments delivered this month?",
+    "scoping_value": "123",
+    "expected_tables": ["shipments"],
+    "expected_sql_regex": "select\\s+count\\(\\*\\).*from\\s+shipments"
+  },
+  {
+    "question": "List entities created this month",
+    "scoping_value": "123",
+    "expected_tables": ["entities"]
+  },
+  {
+    "question": "Top 10 customers by orders this month",
+    "scoping_value": "123",
+    "expected_tables": ["orders"],
+    "expected_sql_regex": "select.*from\\s+orders"
+  },
+  {
+    "question": "Shipments by supplier name",
+    "scoping_value": "123",
+    "expected_tables": ["shipments", "suppliers"]
+  },
+  {
+    "question": "Total transaction amount last week",
+    "scoping_value": "123",
+    "expected_tables": ["transactions"]
+  }
+]
+

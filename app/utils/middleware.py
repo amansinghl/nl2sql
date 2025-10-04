@@ -255,3 +255,5 @@ class CircuitBreakerMiddleware:
 
 # Global circuit breaker middleware instance
 circuit_breaker_middleware = CircuitBreakerMiddleware()
+
+

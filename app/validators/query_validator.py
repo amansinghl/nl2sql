@@ -2,9 +2,9 @@ import re
 from typing import List, Dict, Set, Optional
 from sqlparse import parse, tokens
 from sqlparse.sql import Statement, Identifier, Where
-from .config import settings
-from .error_codes import create_validation_error, ErrorCodes
-from .user_context import UserContext, permission_manager
+from ..utils.config import settings
+from ..utils.error_codes import create_validation_error, ErrorCodes
+from ..utils.user_context import UserContext, permission_manager
 
 class QueryValidator:
     def __init__(self, schema_graph=None):
@@ -15,6 +15,12 @@ class QueryValidator:
     def validate_sql(self, sql: str, scoping_value: str = None, user_context: UserContext = None) -> Dict:
         """Validate SQL and ensure proper scoping filtering based on user context"""
         try:
+            # Optional: AST-level validation using sqlglot for precise alias/column checks
+            ast_result = self._ast_validate(sql, scoping_value, user_context)
+            if ast_result and not ast_result.get("valid", True):
+                # Ensure the caller knows AST validation was used
+                ast_result["ast_used"] = True
+                return ast_result
             # Parse the SQL
             parsed = parse(sql)
             if not parsed:
@@ -67,13 +73,96 @@ class QueryValidator:
                 "tables": list(used_tables),
                 "scoped_tables": scoped_tables,
                 "modified_sql": validation_result.get("modified_sql", sql),
-                "scoping_applied": validation_result.get("scoping_applied", scoping_required)
+                "scoping_applied": validation_result.get("scoping_applied", scoping_required),
+                "ast_used": bool(ast_result)
             }
             
         except Exception as e:
             # Error validating SQL
             error = create_validation_error(e, "sql_validation")
             return {"valid": False, "error": error.error_code.message, "error_code": error.error_code.code}
+
+    def _ast_validate(self, sql: str, scoping_value: str = None, user_context: UserContext = None) -> Optional[Dict]:
+        """Use sqlglot to validate columns and enforce scoping on correct aliases.
+        Falls back silently if sqlglot is unavailable or parsing fails.
+        """
+        try:
+            import sqlglot
+            from sqlglot import exp
+            # Parse and build mapping of table aliases to base tables
+            parsed = sqlglot.parse_one(sql)
+            alias_to_table: Dict[str, str] = {}
+            used_tables: Set[str] = set()
+            for t in parsed.find_all(exp.Table):
+                name = (t.name or '').lower()
+                alias = (t.alias_or_name or '').lower()
+                base = name
+                if base:
+                    used_tables.add(base)
+                if alias:
+                    alias_to_table[alias] = base or alias
+            # Collect SELECT-list aliases to allow usage in ORDER BY / GROUP BY
+            select_aliases: Set[str] = set()
+            try:
+                for sel in getattr(parsed, 'expressions', []) or []:
+                    alias_expr = getattr(sel, 'alias', None)
+                    if alias_expr is not None:
+                        alias_name = (getattr(alias_expr, 'name', None) or str(alias_expr) or '').strip('`').lower()
+                        if alias_name:
+                            select_aliases.add(alias_name)
+            except Exception:
+                # Best-effort collection of aliases; proceed if unavailable
+                pass
+            # Validate column references
+            for col in parsed.find_all(exp.Column):
+                parts = [p for p in col.parts if isinstance(p, str)]
+                col_name = (parts[-1] if parts else col.name or '').lower()
+                tbl_qual = (parts[-2] if len(parts) > 1 else col.table or '').lower()
+                if tbl_qual:
+                    base_tbl = alias_to_table.get(tbl_qual, tbl_qual)
+                    if base_tbl in self.schema_graph.tables:
+                        if col_name and col_name not in set(c.lower() for c in self.schema_graph.tables[base_tbl].get('columns', [])):
+                            return {"valid": False, "error": f"Column '{col_name}' not in table '{base_tbl}'"}
+                else:
+                    # Allow unqualified references to SELECT aliases (e.g., ORDER BY alias)
+                    if col_name in select_aliases:
+                        continue
+                    # Unqualified: allow if column exists in any used table uniquely
+                    candidates = []
+                    for tname in used_tables:
+                        cols = set(c.lower() for c in self.schema_graph.tables.get(tname, {}).get('columns', []))
+                        if col_name in cols:
+                            candidates.append(tname)
+                    if len(candidates) == 0:
+                        return {"valid": False, "error": f"Column '{col_name}' not found in used tables"}
+            # Enforce scoping on aliases of scoped tables if required
+            if user_context:
+                scoping_requirements = permission_manager.get_scoping_requirements(user_context)
+                scoping_required = scoping_requirements.get('scoping_required', True)
+                scope_col_global = scoping_requirements.get('scoping_column') or self.security_config.SCOPING_COLUMN
+            else:
+                scoping_required = True
+                scope_col_global = self.security_config.SCOPING_COLUMN
+            if scoping_required and scoping_value:
+                # For every scoped table alias present, ensure a predicate exists: alias.scope_col = value
+                pred_sql = parsed.sql(dialect="mysql").lower()
+                missing = []
+                for alias, base in alias_to_table.items():
+                    info = self.schema_graph.tables.get(base, {})
+                    if info.get('scoped', False):
+                        scope_col = info.get('scoping_column', scope_col_global).lower()
+                        pattern = rf"\b{alias}\.{scope_col}\s*=\s*['\"]?{scoping_value}['\"]?"
+                        import re
+                        if not re.search(pattern, pred_sql):
+                            # Also allow unqualified scope col if no alias used for that table in predicates
+                            pattern2 = rf"\b{scope_col}\s*=\s*['\"]?{scoping_value}['\"]?"
+                            if not re.search(pattern2, pred_sql):
+                                missing.append(f"{alias}.{scope_col}")
+                if missing:
+                    return {"valid": False, "error": f"Missing scoping filter on: {', '.join(sorted(set(missing)))}"}
+            return {"valid": True}
+        except Exception:
+            return None
     
     def _extract_tables(self, statement: Statement) -> Set[str]:
         """Extract table names from SQL, robustly and without miscounting column names."""
@@ -457,4 +546,6 @@ def get_query_validator(schema_graph=None):
     global query_validator
     if query_validator is None or (schema_graph is not None and query_validator.schema_graph != schema_graph):
         query_validator = QueryValidator(schema_graph)
-    return query_validator 
+    return query_validator
+
+

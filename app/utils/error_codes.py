@@ -455,3 +455,5 @@ def create_request_error(exception: Exception, context: str = "") -> NL2SQLError
     """Create a request processing error"""
     details = {"context": context, "original_error": str(exception)}
     return ErrorHandler.create_error(ErrorCodes.REQ_MALFORMED_REQUEST, details, exception)
+
+

@@ -1,9 +1,9 @@
 from typing import List, Dict, Optional, Any
-from .config import settings
-from .graph_builder import schema_graph
-from .llm_providers import LLMProviderFactory
-from .middleware import circuit_breaker_middleware
-from .error_codes import create_llm_error, ErrorCodes
+from ..utils.config import settings
+from ..loaders.graph_builder import schema_graph
+from ..engines.llm_providers import LLMProviderFactory
+from ..utils.middleware import circuit_breaker_middleware
+from ..utils.error_codes import create_llm_error, ErrorCodes
 
 class LLMHandler:
     def __init__(self, provider: str = None):
@@ -35,14 +35,34 @@ class LLMHandler:
             except Exception:
                 scoping_required = False
             
+            # Build join hints using schema graph join paths for the candidate tables
+            join_hints_lines = []
+            try:
+                from ..loaders.graph_builder import schema_graph as _sg
+                # If >1 relevant tables, compute minimal joins across them
+                if relevant_tables and len(relevant_tables) > 1:
+                    path_joins = _sg.get_join_path(relevant_tables)
+                    for j in path_joins:
+                        jt = j.get('type', 'INNER') if isinstance(j, dict) else 'INNER'
+                        from_t = j.get('from_table')
+                        to_t = j.get('to_table')
+                        from_c = j.get('join_column') or j.get('from_column')
+                        to_c = j.get('to_column', 'id')
+                        if from_t and to_t and from_c:
+                            join_hints_lines.append(f"{jt} JOIN: {from_t}.{from_c} -> {to_t}.{to_c}")
+            except Exception:
+                # Best-effort: no hints
+                pass
+            join_hints_text = "\n".join(join_hints_lines) if join_hints_lines else "(none)"
+
             plan_json = await circuit_breaker_middleware.execute_with_circuit_breaker(
                 self.provider_name,
                 self.provider.generate_plan,
-                user_query, relevant_tables, schema_desc, scoping_required
+                user_query, relevant_tables, schema_desc, scoping_required, join_hints_text
             )
             
             # Step 1.5: Validate and repair plan
-            from .plan_validator import plan_validator
+            from ..validators.plan_validator import plan_validator
             validation_result = plan_validator.validate_plan(plan_json, user_query)
             if not validation_result["valid"]:
                 # If validation fails, try to re-plan with more focused context
@@ -52,7 +72,7 @@ class LLMHandler:
                     plan_json = await circuit_breaker_middleware.execute_with_circuit_breaker(
                         self.provider_name,
                         self.provider.generate_plan,
-                        user_query, [top_table], schema_desc, scoping_required
+                        user_query, [top_table], schema_desc, scoping_required, join_hints_text
                     )
                     validation_result = plan_validator.validate_plan(plan_json, user_query)
                 
@@ -111,4 +131,6 @@ class LLMHandler:
     
     def reset_circuit_breaker(self):
         """Reset circuit breaker for this provider"""
-        circuit_breaker_middleware.reset_circuit_breaker(self.provider_name) 
+        circuit_breaker_middleware.reset_circuit_breaker(self.provider_name)
+
+

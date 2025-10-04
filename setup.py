@@ -37,7 +37,7 @@ SECURITY_SCOPING_COLUMN=accounts_entity_id
 SECURITY_SCOPING_VALUE_SOURCE=request
 SECURITY_SCOPING_VALUE_FIELD=scoping_value
 SECURITY_ENABLE_AUTO_SCOPING=true
-SECURITY_CUSTOM_VALIDATION_RULES={"max_tables": 5, "allowed_operations": ["SELECT"]}
+SECURITY_CUSTOM_VALIDATION_RULES={"max_tables": 50, "allowed_operations": ["SELECT"]}
 
 
 # Rate Limiting

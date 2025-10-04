@@ -3,7 +3,7 @@ import re
 import networkx as nx
 from typing import Dict, List, Optional, Set
 from pathlib import Path
-from .config import SCHEMA_GRAPH_PATH, settings
+from ..utils.config import SCHEMA_GRAPH_PATH, settings
 
 class SchemaGraph:
     def __init__(self, graph_path: str = SCHEMA_GRAPH_PATH):
@@ -257,4 +257,6 @@ class SchemaGraph:
         return None
 
 # Global instance
-schema_graph = SchemaGraph() 
+schema_graph = SchemaGraph()
+
+

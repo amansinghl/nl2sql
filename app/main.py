@@ -8,23 +8,23 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator, model_validator
 import uvicorn
 
-from .config import settings
-from .graph_builder import schema_graph
-from .llm_handler import LLMHandler
-from .query_validator import get_query_validator
-from .db_executor import db_executor
-from .intelligent_sql_generator import create_intelligent_sql_generator
-from .middleware import RequestResponseMiddleware, circuit_breaker_middleware
-from .error_codes import (
+from .utils.config import settings
+from .loaders.graph_builder import schema_graph
+from .agents.llm_handler import LLMHandler
+from .validators.query_validator import get_query_validator
+from .engines.db_executor import db_executor
+from .agents.intelligent_sql_generator import create_intelligent_sql_generator
+from .utils.middleware import RequestResponseMiddleware, circuit_breaker_middleware
+from .utils.error_codes import (
     NL2SQLError, ErrorHandler, ErrorCodes,
     create_database_error, create_llm_error, create_validation_error,
     create_system_error, create_request_error
 )
-from .error_responses import (
+from .utils.error_responses import (
     format_error_response, format_legacy_error_response,
     extract_error_context
 )
-from .user_context import permission_manager, access_logger
+from .utils.user_context import permission_manager, access_logger
 
 
 # Initialize FastAPI app
@@ -491,7 +491,7 @@ async def ui_redirect():
 @app.get("/api/v2/providers")
 async def get_llm_providers():
     """Get available LLM providers and current configuration"""
-    from .llm_providers import LLMProviderFactory
+    from .engines.llm_providers import LLMProviderFactory
     
     available_providers = settings.get_available_providers()
     supported_providers = LLMProviderFactory.get_supported_providers()

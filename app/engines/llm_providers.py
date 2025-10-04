@@ -1,7 +1,7 @@
 import httpx
 from typing import List, Dict, Optional, Any
 from abc import ABC, abstractmethod
-from .config import LLMProviderConfig, settings
+from ..utils.config import LLMProviderConfig, settings
 
 class BaseLLMProvider(ABC):
     """Base class for LLM providers"""
@@ -22,7 +22,7 @@ class BaseLLMProvider(ABC):
     
     # New: plan-then-generate
     @abstractmethod
-    async def generate_plan(self, user_query: str, relevant_tables: List[str], schema_description: str, scoping_required: bool) -> str:
+    async def generate_plan(self, user_query: str, relevant_tables: List[str], schema_description: str, scoping_required: bool, join_hints: str = "") -> str:
         """Generate a JSON plan string from the question and schema."""
         pass
     
@@ -46,7 +46,7 @@ class BaseLLMProvider(ABC):
             f"SQL:"
         )
     
-    def build_plan_prompt(self, user_query: str, relevant_tables: List[str], schema_description: str, scoping_required: bool) -> str:
+    def build_plan_prompt(self, user_query: str, relevant_tables: List[str], schema_description: str, scoping_required: bool, join_hints: str = "") -> str:
         relevant_tables_text = "\n".join(f"- {t}" for t in relevant_tables) if relevant_tables else "- (none)"
         header = settings.PROMPT_PLAN_HEADER
         scope_line = f"Scoping Required: {str(scoping_required).lower()}\n"
@@ -55,6 +55,7 @@ class BaseLLMProvider(ABC):
             f"Database Schema (focused):\n{schema_description}\n\n"
             f"{scope_line}"
             f"Relevant Tables:\n{relevant_tables_text}\n\n"
+            f"Join Hints (use only these when connecting tables; include bridge tables if shown):\n{join_hints}\n\n"
             f"Question: {user_query}\n\n"
             f"JSON Plan:"
         )
@@ -195,9 +196,9 @@ class OpenAIProvider(BaseLLMProvider):
         except Exception:
             return f"Query returned {row_count} results."
     
-    async def generate_plan(self, user_query: str, relevant_tables: List[str], schema_description: str, scoping_required: bool) -> str:
+    async def generate_plan(self, user_query: str, relevant_tables: List[str], schema_description: str, scoping_required: bool, join_hints: str = "") -> str:
         try:
-            prompt = self.build_plan_prompt(user_query, relevant_tables, schema_description, scoping_required)
+            prompt = self.build_plan_prompt(user_query, relevant_tables, schema_description, scoping_required, join_hints)
             headers = {
                 "Authorization": f"Bearer {self.config.api_key}",
                 "Content-Type": "application/json"
@@ -208,7 +209,7 @@ class OpenAIProvider(BaseLLMProvider):
                     {"role": "system", "content": "You are an expert SQL planner. Output JSON only."},
                     {"role": "user", "content": prompt}
                 ],
-                "max_tokens": min(600, self.config.max_tokens),
+                "max_tokens": min(1200, self.config.max_tokens),
                 "temperature": 0.0
             }
             response = await self.client.post(
@@ -337,9 +338,9 @@ class AnthropicProvider(BaseLLMProvider):
             # Error generating explanation with Anthropic
             return f"Query returned {row_count} results."
 
-    async def generate_plan(self, user_query: str, relevant_tables: List[str], schema_description: str, scoping_required: bool) -> str:
+    async def generate_plan(self, user_query: str, relevant_tables: List[str], schema_description: str, scoping_required: bool, join_hints: str = "") -> str:
         try:
-            prompt = self.build_plan_prompt(user_query, relevant_tables, schema_description, scoping_required)
+            prompt = self.build_plan_prompt(user_query, relevant_tables, schema_description, scoping_required, join_hints)
             headers = {
                 "x-api-key": self.config.api_key,
                 "Content-Type": "application/json",
@@ -484,9 +485,9 @@ class GoogleProvider(BaseLLMProvider):
             # Error generating explanation with Google
             return f"Query returned {row_count} results."
 
-    async def generate_plan(self, user_query: str, relevant_tables: List[str], schema_description: str, scoping_required: bool) -> str:
+    async def generate_plan(self, user_query: str, relevant_tables: List[str], schema_description: str, scoping_required: bool, join_hints: str = "") -> str:
         try:
-            prompt = self.build_plan_prompt(user_query, relevant_tables, schema_description, scoping_required)
+            prompt = self.build_plan_prompt(user_query, relevant_tables, schema_description, scoping_required, join_hints)
             headers = {"Content-Type": "application/json"}
             data = {
                 "contents": [
@@ -508,7 +509,7 @@ class GoogleProvider(BaseLLMProvider):
             return result['candidates'][0]['content']['parts'][0]['text'].strip()
         except Exception:
             raise
-
+    
     async def generate_sql_from_plan(self, plan_json: str, scoping_value: Optional[str]) -> str:
         try:
             prompt = self.build_sql_from_plan_prompt(plan_json, scoping_value)
@@ -615,9 +616,9 @@ class CustomProvider(BaseLLMProvider):
             # Error generating explanation with custom LLM
             return f"Query returned {row_count} results."
 
-    async def generate_plan(self, user_query: str, relevant_tables: List[str], schema_description: str, scoping_required: bool) -> str:
+    async def generate_plan(self, user_query: str, relevant_tables: List[str], schema_description: str, scoping_required: bool, join_hints: str = "") -> str:
         try:
-            prompt = self.build_plan_prompt(user_query, relevant_tables, schema_description, scoping_required)
+            prompt = self.build_plan_prompt(user_query, relevant_tables, schema_description, scoping_required, join_hints)
             headers = {"Content-Type": "application/json"}
             if self.config.api_key:
                 headers["Authorization"] = f"Bearer {self.config.api_key}"
@@ -692,3 +693,5 @@ class LLMProviderFactory:
     def get_supported_providers() -> List[str]:
         """Get list of supported LLM providers"""
         return ["openai", "anthropic", "google", "custom"]
+
+

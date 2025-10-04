@@ -10,8 +10,6 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
 parts/
 sdist/
 var/
@@ -78,3 +76,11 @@ coverage.xml
 *.temp
 temp/
 tmp/ 
+
+//UI files
+ui/*.next
+ui/.next
+ui/node_modules
+ui/pnpm-lock.yaml
+ui/pnpm-workspace.yaml
+ui/pnpm-workspace.yaml

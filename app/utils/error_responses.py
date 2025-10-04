@@ -226,3 +226,5 @@ def extract_error_context(request: Request) -> Dict[str, Any]:
         context["body_size"] = len(request._body) if request._body else 0
     
     return context
+
+

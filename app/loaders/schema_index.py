@@ -17,12 +17,15 @@ class SchemaIndex:
         self.table_docs = []
         self.table_names = []
         self._index_built = False
+        # Dense/lexical hybrid components
+        self._tfidf_vectorizer = None
+        self._doc_matrix = None
     
     def _ensure_index(self):
         """Lazy-load the schema graph and build index if needed"""
         if not self._index_built:
             if self.schema_graph is None:
-                from .graph_builder import schema_graph
+                from ..loaders.graph_builder import schema_graph
                 self.schema_graph = schema_graph
             self._build_index()
             self._index_built = True
@@ -60,6 +63,16 @@ class SchemaIndex:
             
             self.table_docs.append(' '.join(doc_parts))
             self.table_names.append(table_name)
+        # Build TF-IDF vectors lazily here to avoid repeated fitting
+        try:
+            from sklearn.feature_extraction.text import TfidfVectorizer
+            if self.table_docs:
+                self._tfidf_vectorizer = TfidfVectorizer(max_features=4000, stop_words='english')
+                self._doc_matrix = self._tfidf_vectorizer.fit_transform(self.table_docs)
+        except Exception:
+            # If sklearn not available or any issue, skip dense component
+            self._tfidf_vectorizer = None
+            self._doc_matrix = None
     
     def _tokenize(self, text: str) -> List[str]:
         """Simple tokenization for BM25"""
@@ -103,9 +116,25 @@ class SchemaIndex:
             return centrality.get(table_name, 0.0)
         except ImportError:
             return 0.0
+
+    def _compute_tfidf_score(self, query: str, doc_index: int) -> float:
+        """Compute cosine similarity using TF-IDF embeddings if available"""
+        try:
+            if not self._tfidf_vectorizer or self._doc_matrix is None:
+                return 0.0
+            if not query:
+                return 0.0
+            import numpy as np
+            from sklearn.metrics.pairwise import cosine_similarity
+            q_vec = self._tfidf_vectorizer.transform([query])
+            sim = cosine_similarity(q_vec, self._doc_matrix[doc_index]).ravel()[0]
+            # Ensure finite
+            return float(sim) if np.isfinite(sim) else 0.0
+        except Exception:
+            return 0.0
     
     def search_tables(self, query: str, top_k: int = 10, min_score: float = 0.1) -> List[Tuple[str, float]]:
-        """Search for relevant tables using BM25 + centrality scoring"""
+        """Search for relevant tables using BM25 + TF-IDF cosine + centrality + keyword boosts"""
         self._ensure_index()
         query_tokens = self._tokenize(query)
         if not query_tokens:
@@ -131,39 +160,37 @@ class SchemaIndex:
             # Centrality score
             centrality_score = self._compute_centrality_score(table_name)
             
+            # TF-IDF cosine score
+            tfidf_score = self._compute_tfidf_score(query, i)
+            
             # Keyword boost
             boost = keyword_boost.get(table_name, 0.0)
             
-            # Combined score (BM25 + centrality + keyword boost)
-            combined_score = bm25_score + (centrality_score * 0.3) + boost
+            # Combined score (weighted)
+            combined_score = (bm25_score * 1.0) + (tfidf_score * 0.8) + (centrality_score * 0.3) + boost
             
             if combined_score >= min_score:
                 scores.append((table_name, combined_score))
         
-        # Sort by score descending
         scores.sort(key=lambda x: x[1], reverse=True)
         return scores[:top_k]
     
     def get_table_priority(self, table_name: str) -> float:
         """Get priority score for a table (higher = more important)"""
         self._ensure_index()
-        # Core business tables get higher priority
         core_tables = {'entities', 'shipments', 'orders', 'users', 'locations', 'transactions'}
         if table_name in core_tables:
             return 1.0
-        
-        # Relationship tables get lower priority
         relationship_indicators = ['mapping', 'preference', 'setting', 'tracking_code', 'status_mapping']
         if any(indicator in table_name.lower() for indicator in relationship_indicators):
             return 0.3
-        
-        # Lookup tables get lowest priority
         lookup_indicators = ['master', 'code', 'status']
         if any(indicator in table_name.lower() for indicator in lookup_indicators):
             return 0.2
-        
-        return 0.5  # Default priority
+        return 0.5
 
 
 # Global instance
 schema_index = SchemaIndex()
+
+

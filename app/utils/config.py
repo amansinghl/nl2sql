@@ -23,8 +23,6 @@ class SecurityConfig(BaseSettings):
     ROLES_CONFIG: str = Field(default='{"customer": {"requires_scoping": true, "access_pattern": "single_entity", "description": "Customer access limited to their entity"}, "admin": {"requires_scoping": false, "access_pattern": "all_entities", "can_scope_to_specific": true, "bypass_validation": true, "description": "Admin access to all entities with full privileges"}}', description="Role configuration as JSON")
     
     # Access Control Policies
-    ENABLE_ENTITY_WHITELIST: bool = Field(default=False, description="Enable entity whitelist for employee access")
-    EMPLOYEE_ENTITY_WHITELIST: str = Field(default="[]", description="Comma-separated list of entity IDs employees can access")
     ENABLE_ACCESS_LOGGING: bool = Field(default=True, description="Enable access logging for audit purposes")
     ENABLE_QUERY_LOGGING: bool = Field(default=True, description="Enable detailed query/SQL logging for analytics")
     QUERY_LOG_FILE: str = Field(default="logs/query_events.jsonl", description="Path to JSONL file where query events are logged")
@@ -34,7 +32,6 @@ class SecurityConfig(BaseSettings):
     # Security Policies
     MAX_ENTITIES_PER_QUERY: int = Field(default=10, description="Maximum number of entities that can be queried in a single request")
     ENABLE_CROSS_ENTITY_QUERIES: bool = Field(default=False, description="Allow queries that span multiple entities")
-    REQUIRE_EXPLICIT_ENTITY_SELECTION: bool = Field(default=True, description="Require explicit entity selection for employee queries")
     DEFAULT_LIMIT: int = Field(default=10, description="Default LIMIT for queries that don't specify one")
     
     @validator('CUSTOM_VALIDATION_RULES')
@@ -61,18 +58,6 @@ class SecurityConfig(BaseSettings):
         except json.JSONDecodeError:
             return '{"customer": {"requires_scoping": true, "access_pattern": "single_entity", "description": "Customer access"}}'
     
-    @validator('EMPLOYEE_ENTITY_WHITELIST')
-    def validate_entity_whitelist(cls, v):
-        try:
-            if v.startswith('[') and v.endswith(']'):
-                json.loads(v)  # Validate JSON array format
-            else:
-                # Handle comma-separated format
-                entities = [e.strip() for e in v.split(',') if e.strip()]
-                json.dumps(entities)  # Validate it can be converted to JSON
-            return v
-        except (json.JSONDecodeError, ValueError):
-            return "[]"
     
     def get_custom_rules(self) -> Dict[str, Any]:
         """Get parsed custom validation rules"""
@@ -88,15 +73,6 @@ class SecurityConfig(BaseSettings):
         except json.JSONDecodeError:
             return {"customer": {"requires_scoping": True, "access_pattern": "single_entity", "description": "Customer access"}}
     
-    def get_employee_entity_whitelist(self) -> List[str]:
-        """Get employee entity whitelist as a list"""
-        try:
-            if self.EMPLOYEE_ENTITY_WHITELIST.startswith('['):
-                return json.loads(self.EMPLOYEE_ENTITY_WHITELIST)
-            else:
-                return [e.strip() for e in self.EMPLOYEE_ENTITY_WHITELIST.split(',') if e.strip()]
-        except (json.JSONDecodeError, ValueError):
-            return []
     
     def get_role_config(self, role: str) -> Optional[Dict[str, Any]]:
         """Get configuration for a specific role"""
@@ -138,7 +114,7 @@ class LLMProviderConfig(BaseSettings):
     base_url: Optional[str] = Field(None, description="Base URL for the API")
     model: str = Field(..., description="Model name to use")
     temperature: float = Field(0.1, description="Temperature for generation")
-    max_tokens: int = Field(512, description="Maximum tokens to generate")
+    max_tokens: int = Field(1024, description="Maximum tokens to generate")
     timeout: int = Field(60, description="Request timeout in seconds")
     
     class Config:
@@ -161,7 +137,7 @@ class Settings(BaseSettings):
     OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
     OPENAI_BASE_URL: str = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
     OPENAI_TEMPERATURE: float = float(os.getenv("OPENAI_TEMPERATURE", "0.0"))
-    OPENAI_MAX_TOKENS: int = int(os.getenv("OPENAI_MAX_TOKENS", "512"))
+    OPENAI_MAX_TOKENS: int = int(os.getenv("OPENAI_MAX_TOKENS", "2000"))
     OPENAI_TIMEOUT: int = int(os.getenv("OPENAI_TIMEOUT", "120"))
     
     # Anthropic Configuration
@@ -228,7 +204,7 @@ class Settings(BaseSettings):
             "SQL: SELECT customer_id, COUNT(*) AS orders_count FROM orders WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH) GROUP BY customer_id ORDER BY orders_count DESC LIMIT 10;\n"
         )   
     )
-
+    
     # Plan-then-generate prompts
     PROMPT_PLAN_HEADER: str = (
         "You are an expert SQL planner. Given a user question and a focused schema, "
@@ -352,4 +328,6 @@ class Settings(BaseSettings):
 # Graph schema file path
 SCHEMA_GRAPH_PATH = "./graph/schema_graph.json"
 
-settings = Settings() 
+settings = Settings()
+
+

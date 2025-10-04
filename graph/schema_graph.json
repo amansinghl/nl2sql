@@ -29,7 +29,7 @@
   },
   "tables": {
     "entities": {
-      "columns": ["id", "accounts_entity_id", "entity_name", "credit_activated", "credit_balance", "created_at", "updated_at", "deleted_at"],
+      "columns": ["accounts_entity_id", "accounts_user_id", "entity_name", "credit_activated", "credit_balance", "created_at", "updated_at", "deleted_at", "instant_cod_day", "slug", "logo", "sameday_cod", "credit_limit", "qb_outstanding", "minimum_balance_amount", "credit_period", "sales_person_id", "spoc_person_id2", "spoc_second_person_id", "spoc_person_id", "cod_adjustable", "instant_cod_enabled", "entity_classification_status", "created_at_ist", "website_link", "acquisition_source", "promo_code", "potential_monthly_load", "notes", "is_whatsapp_tracking_enabled", "whatsapp_tracking_charges"],
       "scoped": true,
       "scoping_column": "accounts_entity_id",
       "description": "Core business entities/customers in the multi-tenant system. Each entity represents a company or organization using the shipping platform.",
@@ -61,7 +61,7 @@
       ]
     },
     "users": {
-      "columns": ["id", "accounts_entity_id", "accounts_user_id", "first_name", "last_name", "email", "country_code", "mobile", "created_at", "updated_at", "deleted_at"],
+      "columns": ["accounts_entity_id", "accounts_user_id", "api_key", "first_name", "last_name", "email", "country_code", "mobile", "is_active", "send_emails", "created_at", "updated_at", "deleted_at"],
       "scoped": false,
       "description": "User accounts within entities. Users can belong to multiple entities through entity_user_mappings.",
       "examples": [
@@ -71,19 +71,7 @@
         },
         {
           "query": "All users for a specific entity",
-          "sql": "SELECT u.* FROM users u JOIN entity_user_mappings eum ON u.accounts_user_id = eum.accounts_user_id WHERE eum.accounts_entity_id = '12345' AND (eum.deleted_at IS NULL OR eum.deleted_at = '0000-00-00 00:00:00')"
-        },
-        {
-          "query": "Users without an active mapping",
-          "sql": "SELECT u.* FROM users u LEFT JOIN entity_user_mappings eum ON u.accounts_user_id = eum.accounts_user_id AND eum.is_active = 1 WHERE eum.id IS NULL"
-        },
-        {
-          "query": "How many users for entity?",
-          "sql": "SELECT COUNT(*) FROM users u JOIN entity_user_mappings eum ON u.accounts_user_id = eum.accounts_user_id WHERE eum.accounts_entity_id = '123' AND eum.is_active = 1"
-        },
-        {
-          "query": "Users with entity names",
-          "sql": "SELECT u.*, e.entity_name FROM users u JOIN entity_user_mappings eum ON u.accounts_user_id = eum.accounts_user_id JOIN entities e ON eum.accounts_entity_id = e.accounts_entity_id WHERE eum.accounts_entity_id = '123'"
+          "sql": "SELECT u.* FROM users u WHERE u.accounts_entity_id = '12345' AND u.deleted_at IS NULL"
         }
       ]
     },
@@ -104,7 +92,7 @@
       ]
     },
     "locations": {
-      "columns": ["id", "accounts_entity_id", "accounts_user_id", "gst_branch_id", "location_name", "location_type", "email", "full_name", "contact", "calling_code", "address_line_1", "address_line_2", "address_line_3", "landmark", "pincode", "city", "state", "visibility", "country", "open_time", "closed_time", "lat", "long", "channel_name", "channel_location_id", "channel_unique_id", "is_active", "created_at", "updated_at", "deleted_at", "hash_sha256"],
+      "columns": ["id", "accounts_entity_id", "accounts_user_id", "gst_branch_id", "location_name", "location_type", "email", "full_name", "contact", "calling_code", "address_line_1", "address_line_2", "address_line_3", "landmark", "pincode", "city", "state", "visibility", "country", "open_time", "closed_time", "lat", "long", "channel_name", "channel_location_id", "channel_unique_id", "is_active", "vendor_pan_no", "vendor_gst_no", "created_at", "updated_at", "deleted_at", "hash_sha256"],
       "scoped": true,
       "scoping_column": "accounts_entity_id",
       "description": "Address and location information for pickup, delivery, billing, and return addresses. Supports multiple channels and geocoding.",
@@ -174,7 +162,7 @@
     "description": "Core shipment records with tracking information, pricing, and logistics details. Central table for shipment lifecycle management.",
     "examples": [
         {
-          "query": "shipment details",
+          "query": "shipment details SH123",
           "sql": "SELECT s.shipment_no, s.tracking_id, s.rto_tracking_id, s.supplier_id, sup.name as supplier_name, s.booking_status, s.tracking_status, s.booking_medium, s.bulk_id, s.reference1, s.product_code, s.cancelled_at, s.created_at as shipment_date, s.from_pincode, s.to_pincode, s.cod_value, s.channel_id, si.mode_transport, si.shipment_type, si.service_type, si.lr_num, milestones.rto_delivered_date, milestones.rto_initiated_date, milestones.delivered_date, org.full_name as seller_name, org.contact as seller_contact, org.city as origin_city, org.state as origin_state, dest.full_name as consignee_name, dest.contact as consignee_contact, dest.city as destination_city, dest.state as destination_state, dest.pincode as destination_pincode, sup.name as partner_name, sup.logo as partner_logo, cm.channel_name, si.acknowledge, (SELECT status FROM orders WHERE s.shipment_no = orders.shipment_no) as status, (SELECT GROUP_CONCAT(child_awb_number) FROM child_awb_numbers ca WHERE s.shipment_no = ca.shipment_no) as child_awb_number, (SELECT user_reason FROM shipment_cancellation_requests scr WHERE s.shipment_no = scr.shipment_no ORDER BY scr.created_at DESC LIMIT 1) as user_reason, (SELECT tracking_category FROM vamaship_tracking_codes_master vtcm WHERE s.tracking_status = vtcm.new_code LIMIT 1) as tracking_category, (SELECT IF(s.tracking_status = 1880, (SELECT std.partner_comment FROM shipment_tracking_details std WHERE std.shipment_no = s.shipment_no AND std.tracking_status = s.tracking_status ORDER BY tracking_event_date_time LIMIT 1), vtcm.status_message) FROM vamaship_tracking_codes_master vtcm WHERE s.tracking_status = vtcm.new_code LIMIT 1) as tracking_status_message, milestones.partner_last_update as partner_last_update, milestones.estimated_delivery_date as estimated_delivery_date, (SELECT SUM(debit_amount) - SUM(credit_amount) FROM transactions WHERE transactions.shipment_no = s.shipment_no) as debit_credit_difference FROM shipments s LEFT JOIN shipment_addresses dest ON s.shipment_no = dest.shipment_no AND dest.type = 'consignee' LEFT JOIN shipment_addresses org ON s.shipment_no = org.shipment_no AND org.type = 'pickup' LEFT JOIN shipment_inputs si ON si.shipment_no = s.shipment_no LEFT JOIN shipment_milestone_dates milestones ON milestones.shipment_no = s.shipment_no LEFT JOIN suppliers sup ON sup.id = s.supplier_id LEFT JOIN channel_masters cm ON cm.channel_code = s.channel_id WHERE s.accounts_entity_id = '123'"
         },
         {
@@ -219,7 +207,7 @@
         },
         {
           "query": "shipment tracking",
-          "sql": "SELECT * FROM shipments WHERE shipment_no = 'SH123' AND accounts_entity_id = '123'"
+          "sql": "SELECT shipments.*, std.* FROM shipments INNER JOIN shipment_tracking_details std ON std.shipment_no = shipment.shipment_no  WHERE shipment_no = 'SH123' AND accounts_entity_id = '123'"
         },
         {
           "query": "Prepaid vs COD shipments today",
@@ -230,23 +218,19 @@
           "sql": "SELECT sup.name AS supplier_name, COUNT(s.shipment_no) AS total_shipments, SUM(s.total_price) AS total_revenue, AVG(s.total_price) AS avg_shipment_value, COUNT(CASE WHEN s.tracking_status = 1900 THEN 1 END) AS delivered_count, ROUND(COUNT(CASE WHEN s.tracking_status = 1900 THEN 1 END) / COUNT(s.shipment_no) * 100, 2) AS delivery_rate FROM shipments s JOIN suppliers sup ON s.supplier_id = sup.id WHERE s.accounts_entity_id = '123' GROUP BY sup.name ORDER BY total_shipments DESC"
         },
         {
-          "query": "Revenue and shipment count by date range",
+          "query": "Revenue by day",
           "sql": "SELECT DATE(shipment_date) as date, COUNT(*) as shipment_count, SUM(total_price) as daily_revenue, AVG(total_price) as avg_shipment_value FROM shipments WHERE shipment_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND accounts_entity_id = '123' GROUP BY DATE(shipment_date) ORDER BY date DESC"
         }
       ]
     },
     "shipment_tracking_details": {
-      "columns": ["id", "shipment_no", "awb_number", "supplier_id", "tracking_status", "partner_tracking_code", "tracking_event_date_time", "location", "partner_comment", "created_at", "updated_at", "deleted_at", "additional_details"],
+      "columns": ["id", "shipment_no", "unique_identifier", "awb_number", "supplier_id", "tracking_status", "partner_tracking_code", "tracking_event_date_time", "location", "partner_comment", "created_at", "updated_at", "deleted_at", "additional_details", "otp_verified"],
       "scoped": false,
-      "description": "Tracking event history for shipments including status updates, location changes, and partner comments.",
+      "description": "This table is used to get shipment trackings. Tracking event history for shipments including status updates, location changes, and partner comments.",
       "examples": [
         {
           "query": "Latest tracking event per shipment",
           "sql": "SELECT std.* FROM shipment_tracking_details std JOIN (SELECT shipment_no, MAX(tracking_event_date_time) AS last_event FROM shipment_tracking_details GROUP BY shipment_no) t ON std.shipment_no = t.shipment_no AND std.tracking_event_date_time = t.last_event"
-        },
-        {
-          "query": "All RTO events for a supplier",
-          "sql": "SELECT * FROM shipment_tracking_details WHERE supplier_id = 10 AND tracking_status IN ('2000','2020','2025','2030')"
         },
         {
           "query": "Enriched tracking with status message",
@@ -257,12 +241,8 @@
           "sql": "SELECT s.name, COUNT(*) FROM shipment_tracking_details std JOIN suppliers s ON std.supplier_id = s.id GROUP BY s.name"
         },
         {
-          "query": "Latest tracking for specific shipment",
+          "query": "tracking for shipment",
           "sql": "SELECT * FROM shipment_tracking_details WHERE shipment_no = 'SH123' ORDER BY tracking_event_date_time DESC LIMIT 1"
-        },
-        {
-          "query": "All RTO events",
-          "sql": "SELECT * FROM shipment_tracking_details WHERE tracking_status IN ('2000', '2020', '2025', '2030')"
         }
       ]
     },
@@ -309,17 +289,17 @@
       ]
     },
     "shipment_addresses": {
-      "columns": ["id", "shipment_no", "type", "full_name", "contact", "city", "state", "pincode", "created_at", "updated_at"],
+      "columns": ["id", "type", "shipment_no", "full_name", "email", "contact", "calling_code", "address_line_1", "address_line_2", "address_line_3", "landmark", "pincode", "city", "state", "country", "location_type", "location_name", "location_id", "created_at", "updated_at"],
       "scoped": false,
       "description": "Per-shipment denormalized address snapshots. Used for origin (pickup) and destination (consignee) details.",
       "examples": [
         {
           "query": "Consignee details for a shipment",
-          "sql": "SELECT full_name, contact, city, state, pincode FROM shipment_addresses WHERE shipment_no = 'SH123' AND type = 'consignee'"
+          "sql": "SELECT full_name, contact, city, state, pincode FROM shipment_addresses WHERE shipment_no = 'SH123' AND type = 2"
         },
         {
           "query": "Pickup (origin) details for a shipment",
-          "sql": "SELECT full_name, contact, city, state FROM shipment_addresses WHERE shipment_no = 'SH123' AND type = 'pickup'"
+          "sql": "SELECT full_name, contact, city, state FROM shipment_addresses WHERE shipment_no = 'SH123' AND type = 1"
         }
       ]
     },
@@ -386,8 +366,7 @@
     },
     "vamaship_tracking_codes_master": {
       "columns": ["id", "old_code", "new_code", "status_message", "tracking_category", "created_at", "updated_at", "deleted_at"],
-      "scoped": true,
-      "scoping_column": "new_code",
+      "scoped": false,
       "description": "Master list of standardized Vamaship tracking codes and their messages. Used to normalize partner-specific tracking statuses.",
       "examples": [
         {
@@ -420,23 +399,12 @@
       ]
     },
     "transactions": {
-      "columns": ["id", "vama_transaction_id", "sac", "voucher_no", "order_id", "accounts_entity_id", "accounts_user_id", "payment_mode", "payment_type", "accounting_type_id", "transaction_data", "transaction_amount", "transaction_unique_id", "transaction_by", "remark", "invoice_no", "quick_books_id", "qb_transaction_id", "qb_payment_id", "status", "created_at", "updated_at", "deleted_at", "request_parameters", "gateway_name", "payment_request_token", "payment_api_response", "payment_status", "reference_table", "reference_id", "master_user_id", "received_amount", "credit_amount", "debit_amount", "transaction_status", "shipment_no"],
+      "columns": ["id", "vama_transaction_id", "sac", "voucher_no", "order_id", "accounts_entity_id", "accounts_user_id", "payment_mode", "payment_type", "accounting_type_id", "transaction_data", "transaction_amount", "transaction_unique_id", "transaction_by", "remark", "invoice_no", "quick_books_id", "qb_transaction_id", "qb_payment_id", "status", "created_at", "updated_at", "deleted_at", "request_parameters", "gateway_name", "payment_request_token", "payment_api_response", "payment_status", "reference_table", "reference_id", "master_user_id", "received_amount", "credit_amount", "debit_amount", "transaction_status", "shipment_no", "zohobook_id"],
       "scoped": true,
       "scoping_column": "accounts_entity_id",
       "description": "Financial transactions including payments, refunds, and accounting entries with QuickBooks integration.",
       "examples": [
-        {
-          "query": "Successful online payments for an entity",
-          "sql": "SELECT * FROM transactions WHERE accounts_entity_id = '123' AND payment_mode = 'online' AND payment_status = 'Completed'"
-        },
-        {
-          "query": "Refund/negative amount transactions",
-          "sql": "SELECT * FROM transactions WHERE transaction_amount < 0 AND accounts_entity_id = '123'"
-        },
-        {
-          "query": "Transactions linked to orders in the last 30 days",
-          "sql": "SELECT t.* FROM transactions t JOIN orders o ON t.order_id = o.id WHERE t.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) AND t.accounts_entity_id = '123'"
-        },
+        
         {
           "query": "How many transactions today?",
           "sql": "SELECT COUNT(*) FROM transactions WHERE DATE(created_at) = CURDATE() AND accounts_entity_id = '123'"
@@ -444,10 +412,6 @@
         {
           "query": "Total transaction amount last week",
           "sql": "SELECT SUM(transaction_amount) FROM transactions WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND accounts_entity_id = '123'"
-        },
-        {
-          "query": "Transactions by payment mode",
-          "sql": "SELECT payment_mode, COUNT(*) as transaction_count FROM transactions WHERE accounts_entity_id = '123' GROUP BY payment_mode"
         }
       ]
     },
@@ -675,7 +639,7 @@
       ]
     },
     "shipment_cancellation_requests": {
-      "columns": ["id", "shipment_no", "shipment_number", "order_id", "accounts_entity_id", "accounts_user_id", "tracking_id", "cancellation_status", "user_reason", "cc_reason", "user_remark", "cc_remark", "cancel_requested_by", "refund_amount", "approved_by", "created_at", "updated_at", "refund_to"],
+      "columns": ["shipment_no", "accounts_entity_id", "accounts_user_id", "tracking_id", "cancellation_status", "user_reason", "cc_reason", "user_remark", "cc_remark", "cancel_requested_by", "refund_amount", "approved_by", "created_at", "updated_at", "refund_to", "deleted_at"],
       "scoped": false,
       "description": "Shipment cancellation requests with approval workflow and refund processing."
     },
@@ -719,7 +683,7 @@
       "description": "Call center activity tracking including pre-booking, post-booking, NDR, and delivery calls."
     },
     "air_dom_costing": {
-      "columns": ["id", "supplier_id", "costing_logic", "per_slab_cost", "service_tax", "fuel_surcharge", "cod_tax", "created_at", "updated_at", "from_date", "classes", "extra_charges", "volumetric_formula", "accounts_entity_id", "is_reverse"],
+      "columns": ["id", "supplier_id", "costing_logic", "per_slab_cost", "service_tax", "fuel_surcharge", "cod_tax", "created_at", "updated_at", "from_date", "classes", "extra_charges", "volumetric_formula", "accounts_entity_id", "is_reverse", "is_rto"],
       "scoped": true,
       "scoping_column": "accounts_entity_id",
       "description": "Air domestic costing configuration by supplier, including slab definitions and surcharges."
@@ -848,8 +812,13 @@
     {"from": "orders", "to": "locations", "on": "consignee_location_id"},
     {"from": "orders", "to": "locations", "on": "billing_location_id"},
     {"from": "orders", "to": "locations", "on": "return_location_id"},
+    {"from": "entities", "to": "shipments", "on": "accounts_entity_id", "to_column": "accounts_entity_id"},
+    {"from": "entities", "to": "shipments", "on": "accounts_user_id", "to_column": "accounts_user_id"},
+    {"from": "users", "to": "shipments", "on": "accounts_user_id", "to_column": "accounts_user_id"},
+    {"from": "users", "to": "shipments", "on": "accounts_entity_id", "to_column": "accounts_entity_id"},
     {"from": "orders", "to": "shipments", "on": "shipment_no", "to_column": "shipment_no"},
     {"from": "shipments", "to": "entities", "on": "accounts_entity_id", "to_column": "accounts_entity_id"},
+    {"from": "shipments", "to": "entities", "on": "accounts_user_id", "to_column": "accounts_user_id"},
     {"from": "shipments", "to": "users", "on": "accounts_entity_id", "to_column": "accounts_entity_id"},
     {"from": "shipments", "to": "users", "on": "accounts_user_id", "to_column": "accounts_user_id"},
     {"from": "shipments", "to": "suppliers", "on": "supplier_id", "to_column": "id"},
@@ -858,9 +827,9 @@
     {"from": "shipments", "to": "locations", "on": "billing_location_id"},
     {"from": "shipments", "to": "locations", "on": "return_location_id"},
     {"from": "shipment_tracking_details", "to": "shipments", "on": "shipment_no", "to_column": "shipment_no"},
-    {"from": "shipment_tracking_details", "to": "suppliers", "on": "supplier_id"},
+    {"from": "shipment_tracking_details", "to": "suppliers", "on": "supplier_id", "to_column": "id"},
     {"from": "shipment_line_items", "to": "shipments", "on": "shipment_no", "to_column": "shipment_no"},
-    {"from": "shipment_line_items", "to": "orders", "on": "order_id"},
+    {"from": "shipment_line_items", "to": "orders", "on": "order_id", "to_column": "id"},
     {"from": "shipment_line_items", "to": "products", "on": "product_id", "to_column": "id"},
     {"from": "shipment_packages", "to": "shipments", "on": "shipment_no", "to_column": "shipment_no"},
     {"from": "shipments", "to": "shipment_addresses", "on": "shipment_no", "to_column": "shipment_no"},
